@@ -1,7 +1,7 @@
 {
-  "name": "hardhat-boilerplate",
-  "version": "1.1.0",
-  "description": "Hardhat boilerplate",
+  "name": "vesting-wallet",
+  "version": "0.0.1",
+  "description": "Wonderland Vesting Wallet",
   "keywords": [
     "ethereum",
     "smart",
@@ -17,16 +17,12 @@
   },
   "contributors": [
     {
-      "name": "404skillz",
-      "url": "https://github.com/404skillz"
-    },
-    {
-      "name": "0xGorilla",
-      "url": "https://github.com/0xGorilla"
-    },
-    {
       "name": "wei3erHase",
       "url": "https://github.com/wei3erHase"
+    },
+    {
+      "name": "0xUwUnt",
+      "url": "https://github.com/0xUwUnt"
     }
   ],
   "scripts": {
@@ -53,13 +49,24 @@
     "test:unit": "yarn test 'test/unit/**/*.spec.ts'",
     "test:unit:parallel": "yarn test:parallel 'test/unit/**/*.spec.ts'"
   },
+  "resolutions": {
+    "@ethereumjs/block": "3.4.0",
+    "@ethereumjs/blockchain": "5.4.0",
+    "@ethereumjs/common": "2.4.0",
+    "@ethereumjs/tx": "3.3.0",
+    "@ethereumjs/vm": "5.5.2",
+    "@solidity-parser/parser": "0.13.2"
+  },
   "dependencies": {
+    "@defi-wonderland/smock": "2.0.7",
     "@openzeppelin/contracts": "4.3.1"
   },
   "devDependencies": {
     "@codechecks/client": "0.1.11",
     "@commitlint/cli": "13.1.0",
     "@commitlint/config-conventional": "13.1.0",
+    "@dethcrypto/eth-sdk": "^0.2.4",
+    "@dethcrypto/eth-sdk-client": "^0.1.6",
     "@nomiclabs/hardhat-ethers": "npm:hardhat-deploy-ethers@0.3.0-beta.10",
     "@nomiclabs/hardhat-etherscan": "2.1.6",
     "@nomiclabs/hardhat-waffle": "2.0.1",

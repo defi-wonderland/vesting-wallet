@@ -25,3 +25,6 @@ yarn.lock
 
 # Solidity
 contracts/mock
+
+# ETH SDK
+eth-sdk/abis
