@@ -5,8 +5,6 @@ pragma solidity ^0.8.0;
 import '@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol';
 import '@openzeppelin/contracts/token/ERC20/IERC20.sol';
 import '@openzeppelin/contracts/utils/Address.sol';
-import '@openzeppelin/contracts/utils/Context.sol';
-import '@openzeppelin/contracts/utils/math/Math.sol';
 import './interfaces/IVestingWallet.sol';
 
 /**
@@ -19,7 +17,7 @@ import './interfaces/IVestingWallet.sol';
  * Consequently, if the vesting has already started, any amount of tokens sent to this contract will (at least partly)
  * be immediately releasable.
  */
-contract VestingWallet is IVestingWallet, Context {
+contract VestingWallet is IVestingWallet {
   address internal _owner;
   address internal _eth = 0xFFfFfFffFFfffFFfFFfFFFFFffFFFffffFfFFFfF;
   address public override beneficiary;
