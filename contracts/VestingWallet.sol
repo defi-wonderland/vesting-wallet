@@ -52,13 +52,14 @@ contract VestingWallet is IVestingWallet {
       release(_token);
     }
 
+    IERC20(_token).safeTransferFrom(msg.sender, address(this), _amount);
+
     startDatePerToken[_token] = _startDate;
     releaseDatePerToken[_token] = _startDate + _duration;
 
     uint256 pendingAmount = amountPerToken[_token] - releasedPerToken[_token];
     amountPerToken[_token] = _amount + pendingAmount;
-
-    IERC20(_token).safeTransferFrom(msg.sender, address(this), _amount);
+    releasedPerToken[_token] = 0;
   }
 
   function addBenefit(uint64 _startDate, uint64 _duration) external payable override onlyOwner {
@@ -71,6 +72,7 @@ contract VestingWallet is IVestingWallet {
 
     uint256 pendingAmount = amountPerToken[_eth] - releasedPerToken[_eth];
     amountPerToken[_eth] = msg.value + pendingAmount;
+    releasedPerToken[_eth] = 0;
   }
 
   function removeBenefit() external override onlyOwner {
