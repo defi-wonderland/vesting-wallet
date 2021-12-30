@@ -11,6 +11,8 @@ import { DAI_ADDRESS, DAI_WHALE_ADDRESS, DURATION, EXPECTATION_DELTA, PARTIAL_DU
 import { when } from '@utils/bdd';
 import { ContractTransaction } from '@ethersproject/contracts';
 
+const TOTAL_VEST_AMOUNT = VEST_AMOUNT.mul(2);
+
 describe('VestingWallet @skip-on-coverage', () => {
   let daiWhale: JsonRpcSigner;
   let beneficiary: SignerWithAddress;
@@ -30,7 +32,7 @@ describe('VestingWallet @skip-on-coverage', () => {
     dai = (await ethers.getContractAt('IERC20', DAI_ADDRESS)) as unknown as IERC20;
     daiWhale = await wallet.impersonate(DAI_WHALE_ADDRESS);
 
-    await dai.connect(daiWhale).transfer(owner.address, VEST_AMOUNT);
+    await dai.connect(daiWhale).transfer(owner.address, TOTAL_VEST_AMOUNT);
 
     vestingWalletFactory = (await ethers.getContractFactory('VestingWallet')) as VestingWallet__factory;
 
@@ -127,7 +129,7 @@ describe('VestingWallet @skip-on-coverage', () => {
       });
     });
 
-    it('should transfer the total benefit to the beneficiary if the bond is over', async () => {
+    it('should transfer to beneficiary the total benefit if the bond is over', async () => {
       await evm.advanceToTimeAndBlock(START_DATE + DURATION);
       const beneficiaryBalance0 = await ethers.provider.getBalance(beneficiary.address);
 
@@ -139,19 +141,7 @@ describe('VestingWallet @skip-on-coverage', () => {
       expect(beneficiaryBalance).to.be.closeTo(VEST_AMOUNT, EXPECTATION_DELTA);
     });
 
-    it('should transfer a proportional to the beneficiary if the bond is active', async () => {
-      await evm.advanceToTimeAndBlock(START_DATE + PARTIAL_DURATION);
-
-      const claimableAmount = VEST_AMOUNT.mul(PARTIAL_DURATION).div(DURATION);
-      const beneficiaryInitialBalance = await ethers.provider.getBalance(beneficiary.address);
-
-      const tx = await vestingWallet.connect(owner)['removeBenefit()']();
-      const beneficiaryFinalBalance = await ethers.provider.getBalance(beneficiary.address);
-
-      expect(beneficiaryFinalBalance.sub(beneficiaryInitialBalance)).to.be.closeTo(claimableAmount, EXPECTATION_DELTA);
-    });
-
-    it('should transfer the rest of the benefit to the owner if the bond is active', async () => {
+    it('should transfer to beneficiary a proportional if the bond is active', async () => {
       await evm.advanceToTimeAndBlock(START_DATE + PARTIAL_DURATION);
 
       const claimableAmount = VEST_AMOUNT.mul(PARTIAL_DURATION).div(DURATION);
@@ -163,7 +153,19 @@ describe('VestingWallet @skip-on-coverage', () => {
       expect(beneficiaryFinalBalance.sub(beneficiaryInitialBalance)).to.be.closeTo(claimableAmount, EXPECTATION_DELTA);
     });
 
-    it('should sendback all the benefit to the owner if the bond did not started yet', async () => {
+    it('should transfer to owner the rest of the benefit if the bond is active', async () => {
+      await evm.advanceToTimeAndBlock(START_DATE + PARTIAL_DURATION);
+
+      const claimableAmount = VEST_AMOUNT.mul(PARTIAL_DURATION).div(DURATION);
+      const beneficiaryInitialBalance = await ethers.provider.getBalance(beneficiary.address);
+
+      await vestingWallet.connect(owner)['removeBenefit()']();
+      const beneficiaryFinalBalance = await ethers.provider.getBalance(beneficiary.address);
+
+      expect(beneficiaryFinalBalance.sub(beneficiaryInitialBalance)).to.be.closeTo(claimableAmount, EXPECTATION_DELTA);
+    });
+
+    it('should sendback to owner all the benefit if the bond did not started yet', async () => {
       await evm.advanceToTimeAndBlock(START_DATE - 1);
 
       const ownerInitialBalance = await ethers.provider.getBalance(owner.address);
@@ -185,7 +187,7 @@ describe('VestingWallet @skip-on-coverage', () => {
       await vestingWallet.connect(owner)['addBenefit(uint64,uint64,address,uint256)'](START_DATE, DURATION, dai.address, VEST_AMOUNT);
     });
 
-    it('should transfer the total benefit to the beneficiary if the bond is over', async () => {
+    it('should transfer to beneficiary the total benefit if the bond is over', async () => {
       await evm.advanceToTimeAndBlock(START_DATE + DURATION);
 
       await vestingWallet.connect(owner)['removeBenefit(address)'](dai.address);
@@ -195,7 +197,7 @@ describe('VestingWallet @skip-on-coverage', () => {
       expect(beneficiaryBalance).to.be.equal(VEST_AMOUNT);
     });
 
-    it('should transfer a proportional to the beneficiary if the bond is active', async () => {
+    it('should transfer to beneficiary a proportional if the bond is active', async () => {
       const beneficiaryClaimableAmount = VEST_AMOUNT.mul(PARTIAL_DURATION).div(DURATION);
 
       await evm.advanceToTimeAndBlock(START_DATE + PARTIAL_DURATION);
@@ -206,7 +208,7 @@ describe('VestingWallet @skip-on-coverage', () => {
       expect(beneficiaryBalance).to.be.closeTo(beneficiaryClaimableAmount, EXPECTATION_DELTA);
     });
 
-    it('should transfer the rest of the benefit to the owner if the bond is active', async () => {
+    it('should transfer to owner the rest of the benefit if the bond is active', async () => {
       const ownerInitialBalance = await dai.callStatic.balanceOf(owner.address);
 
       await evm.advanceToTimeAndBlock(START_DATE + PARTIAL_DURATION);
@@ -218,13 +220,14 @@ describe('VestingWallet @skip-on-coverage', () => {
       expect(ownerFinalBalance.sub(ownerInitialBalance)).to.be.closeTo(VEST_AMOUNT.sub(beneficiaryClaimableAmount), EXPECTATION_DELTA);
     });
 
-    it('should sendback all the benefit to the owner if the bond did not started yet', async () => {
+    it('should sendback to owner all the benefit if the bond did not started yet', async () => {
       await evm.advanceToTimeAndBlock(START_DATE - 1);
 
+      const ownerInitialBalance = await dai.callStatic.balanceOf(owner.address);
       await vestingWallet.connect(owner)['removeBenefit(address)'](dai.address);
       const ownerFinalBalance = await dai.callStatic.balanceOf(owner.address);
 
-      expect(ownerFinalBalance).to.be.equal(VEST_AMOUNT);
+      expect(ownerFinalBalance.sub(ownerInitialBalance)).to.be.equal(VEST_AMOUNT);
     });
   });
 
@@ -284,6 +287,109 @@ describe('VestingWallet @skip-on-coverage', () => {
       const expectedAmount = VEST_AMOUNT.mul(3).div(4);
 
       expect(firstClaim.add(secondClaim)).to.be.closeTo(expectedAmount, EXPECTATION_DELTA);
+    });
+  });
+
+  when('a provider do a ERC20 re-vesting', () => {
+    beforeEach(async () => {
+      await dai.connect(owner).approve(vestingWallet.address, TOTAL_VEST_AMOUNT);
+      await vestingWallet.connect(owner)['addBenefit(uint64,uint64,address,uint256)'](START_DATE, DURATION, dai.address, VEST_AMOUNT);
+    });
+
+    it('should transfer to beneficiary the total previous benefit if the previous bond is over', async () => {
+      await evm.advanceToTimeAndBlock(START_DATE + DURATION);
+
+      await vestingWallet.connect(owner)['addBenefit(uint64,uint64,address,uint256)'](START_DATE, DURATION, dai.address, VEST_AMOUNT);
+
+      const beneficiaryBalance = await dai.callStatic.balanceOf(beneficiary.address);
+      expect(beneficiaryBalance).to.be.equal(VEST_AMOUNT);
+    });
+
+    it('should transfer to beneficiary a proportional of the previous benefit if the previous bond is active', async () => {
+      const beneficiaryClaimableAmount = VEST_AMOUNT.mul(PARTIAL_DURATION).div(DURATION);
+      await evm.advanceToTimeAndBlock(START_DATE + PARTIAL_DURATION);
+
+      await vestingWallet.connect(owner)['addBenefit(uint64,uint64,address,uint256)'](START_DATE, DURATION, dai.address, VEST_AMOUNT);
+
+      const beneficiaryBalance = await dai.callStatic.balanceOf(beneficiary.address);
+      expect(beneficiaryBalance).to.be.closeTo(beneficiaryClaimableAmount, EXPECTATION_DELTA);
+    });
+
+    it('should reinvest the rest of the previous benefit if the previous bond is active', async () => {
+      const beneficiaryClaimableAmount = VEST_AMOUNT.mul(PARTIAL_DURATION).div(DURATION);
+      await evm.advanceToTimeAndBlock(START_DATE + PARTIAL_DURATION);
+
+      await vestingWallet.connect(owner)['addBenefit(uint64,uint64,address,uint256)'](START_DATE, DURATION, dai.address, VEST_AMOUNT);
+
+      const contractDaiBalance = await vestingWallet.callStatic.amountPerToken(dai.address);
+      expect(contractDaiBalance).to.be.closeTo(TOTAL_VEST_AMOUNT.sub(beneficiaryClaimableAmount), EXPECTATION_DELTA);
+    });
+
+    it('should reinvest all the previous benefit if the previous bond did not started yet', async () => {
+      await evm.advanceToTimeAndBlock(START_DATE - 1);
+
+      await vestingWallet.connect(owner)['addBenefit(uint64,uint64,address,uint256)'](START_DATE, DURATION, dai.address, VEST_AMOUNT);
+
+      const contractDaiBalance = await vestingWallet.callStatic.amountPerToken(dai.address);
+      expect(contractDaiBalance).to.be.equal(TOTAL_VEST_AMOUNT);
+    });
+  });
+
+  when('a provider do a ETH re-vesting', () => {
+    beforeEach(async () => {
+      await vestingWallet.connect(owner)['addBenefit(uint64,uint64)'](START_DATE, DURATION, {
+        value: VEST_AMOUNT,
+      });
+    });
+
+    it('should transfer to beneficiary the total previous benefit if the previous bond is over', async () => {
+      await evm.advanceToTimeAndBlock(START_DATE + DURATION);
+      const beneficiaryBalance0 = await ethers.provider.getBalance(beneficiary.address);
+
+      await vestingWallet.connect(owner)['addBenefit(uint64,uint64)'](START_DATE, DURATION, {
+        value: VEST_AMOUNT,
+      });
+
+      const beneficiaryBalance1 = await ethers.provider.getBalance(beneficiary.address);
+      const beneficiaryBalance = beneficiaryBalance1.sub(beneficiaryBalance0);
+
+      expect(beneficiaryBalance).to.be.closeTo(VEST_AMOUNT, EXPECTATION_DELTA);
+    });
+
+    it('should transfer to beneficiary a proportional of the previous benefit if the previous bond is active', async () => {
+      await evm.advanceToTimeAndBlock(START_DATE + PARTIAL_DURATION);
+      const claimableAmount = VEST_AMOUNT.mul(PARTIAL_DURATION).div(DURATION);
+      const beneficiaryInitialBalance = await ethers.provider.getBalance(beneficiary.address);
+
+      await vestingWallet.connect(owner)['addBenefit(uint64,uint64)'](START_DATE, DURATION, {
+        value: VEST_AMOUNT,
+      });
+
+      const beneficiaryFinalBalance = await ethers.provider.getBalance(beneficiary.address);
+      expect(beneficiaryFinalBalance.sub(beneficiaryInitialBalance)).to.be.closeTo(claimableAmount, EXPECTATION_DELTA);
+    });
+
+    it('should reinvest the rest of the previous benefit if the previous bond is active', async () => {
+      const beneficiaryClaimableAmount = VEST_AMOUNT.mul(PARTIAL_DURATION).div(DURATION);
+      await evm.advanceToTimeAndBlock(START_DATE + PARTIAL_DURATION);
+
+      await vestingWallet.connect(owner)['addBenefit(uint64,uint64)'](START_DATE, DURATION, {
+        value: VEST_AMOUNT,
+      });
+
+      const contratEthBalance = await ethers.provider.getBalance(vestingWallet.address);
+      expect(contratEthBalance).to.be.closeTo(TOTAL_VEST_AMOUNT.sub(beneficiaryClaimableAmount), EXPECTATION_DELTA);
+    });
+
+    it('should reinvest all the previous benefit if the previous bond did not started yet', async () => {
+      await evm.advanceToTimeAndBlock(START_DATE - 1);
+
+      await vestingWallet.connect(owner)['addBenefit(uint64,uint64)'](START_DATE, DURATION, {
+        value: VEST_AMOUNT,
+      });
+
+      const contratEthBalance = await ethers.provider.getBalance(vestingWallet.address);
+      expect(contratEthBalance).to.be.equal(TOTAL_VEST_AMOUNT);
     });
   });
 });
