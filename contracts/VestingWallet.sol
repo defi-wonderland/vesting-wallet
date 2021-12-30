@@ -7,6 +7,7 @@ import '@openzeppelin/contracts/token/ERC20/IERC20.sol';
 import '@openzeppelin/contracts/utils/Address.sol';
 import '@openzeppelin/contracts/utils/Context.sol';
 import '@openzeppelin/contracts/utils/math/Math.sol';
+import './interfaces/IVestingWallet.sol';
 
 /**
  * @title VestingWallet
@@ -18,20 +19,14 @@ import '@openzeppelin/contracts/utils/math/Math.sol';
  * Consequently, if the vesting has already started, any amount of tokens sent to this contract will (at least partly)
  * be immediately releasable.
  */
-contract VestingWallet is Context {
-  event EtherReleased(uint256 amount);
-  event ERC20Released(address indexed token, uint256 amount);
-
-  error Unauthorized();
-  error NoOverloads();
-
-  address public beneficiary;
+contract VestingWallet is IVestingWallet, Context {
   address internal _owner;
   address internal _eth = 0xFFfFfFffFFfffFFfFFfFFFFFffFFFffffFfFFFfF;
-  mapping(address => uint256) public amountPerToken;
-  mapping(address => uint64) public releaseDatePerToken;
-  mapping(address => uint64) public startDatePerToken;
-  mapping(address => uint256) public releasedPerToken;
+  address public override beneficiary;
+  mapping(address => uint256) public override amountPerToken;
+  mapping(address => uint64) public override releaseDatePerToken;
+  mapping(address => uint64) public override startDatePerToken;
+  mapping(address => uint256) public override releasedPerToken;
 
   using SafeERC20 for IERC20;
 
@@ -43,12 +38,17 @@ contract VestingWallet is Context {
     beneficiary = _beneficiary;
   }
 
+  /**
+   * @dev The contract should be able to receive Eth.
+   */
+  receive() external payable {}
+
   function addBenefit(
     uint64 _startDate,
     uint64 _duration,
     address _token,
     uint256 _amount
-  ) external onlyOwner {
+  ) external override onlyOwner {
     if (startDatePerToken[_token] != 0) {
       revert NoOverloads();
     }
@@ -60,7 +60,7 @@ contract VestingWallet is Context {
     amountPerToken[_token] += _amount;
   }
 
-  function addBenefit(uint64 _startDate, uint64 _duration) external payable onlyOwner {
+  function addBenefit(uint64 _startDate, uint64 _duration) external payable override onlyOwner {
     startDatePerToken[_eth] = _startDate;
     releaseDatePerToken[_eth] = _startDate + _duration;
     amountPerToken[_eth] += msg.value;
@@ -71,7 +71,7 @@ contract VestingWallet is Context {
    *
    * Emits a {TokensReleased} event.
    */
-  function release() public virtual {
+  function release() public virtual override {
     uint256 releasable = vestedAmount(_eth) - releasedPerToken[_eth];
     releasedPerToken[_eth] += releasable;
     emit EtherReleased(releasable);
@@ -83,7 +83,7 @@ contract VestingWallet is Context {
    *
    * Emits a {TokensReleased} event.
    */
-  function release(address _token) public virtual {
+  function release(address _token) public virtual override {
     uint256 releasable = vestedAmount(_token) - releasedPerToken[_token];
     releasedPerToken[_token] += releasable;
     emit ERC20Released(_token, releasable);
@@ -93,18 +93,18 @@ contract VestingWallet is Context {
   /**
    * @dev Calculates the amount of ether that has already vested. Default implementation is a linear vesting curve.
    */
-  function vestedAmount() public view virtual returns (uint256) {
+  function vestedAmount() public view virtual override returns (uint256) {
     return vestedAmount(_eth);
   }
 
   /**
    * @dev Calculates the amount of tokens that has already vested. Default implementation is a linear vesting curve.
    */
-  function vestedAmount(address _token) public view virtual returns (uint256) {
+  function vestedAmount(address _token) public view virtual override returns (uint256) {
     uint64 _timestamp = uint64(block.timestamp);
     uint64 _start = startDatePerToken[_token];
     uint64 _duration = releaseDatePerToken[_token] - startDatePerToken[_token];
-    uint256 _totalAllocation = amountPerToken[_token] + releasedPerToken[_token];
+    uint256 _totalAllocation = amountPerToken[_token];
 
     if (_timestamp < _start) {
       return 0;
@@ -113,6 +113,22 @@ contract VestingWallet is Context {
     } else {
       return (_totalAllocation * (_timestamp - _start)) / _duration;
     }
+  }
+
+  function sendDust(address _token) public override onlyOwner {
+    uint256 amount;
+    if (_token == _eth) {
+      amount = address(this).balance - amountPerToken[_eth];
+      payable(_owner).transfer(amount);
+    } else {
+      amount = IERC20(_token).balanceOf(address(this)) - amountPerToken[_token];
+      IERC20(_token).safeTransfer(_owner, amount);
+    }
+    emit DustSent(_token, amount, _owner);
+  }
+
+  function sendDust() external override onlyOwner {
+    sendDust(_eth);
   }
 
   modifier onlyOwner() {

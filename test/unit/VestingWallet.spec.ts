@@ -14,18 +14,16 @@ chai.use(smock.matchers);
 const VEST_AMOUNT = toUnit(100);
 
 describe('VestingWallet', () => {
-  let vestingWallet: VestingWallet;
-  let vestingWalletFactory: VestingWallet__factory;
+  let vestingWallet: MockContract<VestingWallet>;
+  let vestingWalletFactory: MockContractFactory<VestingWallet__factory>;
   let snapshotId: string;
-  let beneficiary: SignerWithAddress;
+  let ethProvider: SignerWithAddress;
   let owner: SignerWithAddress;
-  let alice: SignerWithAddress;
   let dai: FakeContract<IERC20>;
 
   before(async () => {
-    [beneficiary, owner, alice] = await ethers.getSigners();
-    // TODO: replace for a Mock (we use mocks in unit tests)
-    vestingWalletFactory = (await ethers.getContractFactory('VestingWallet')) as VestingWallet__factory;
+    [ethProvider, owner] = await ethers.getSigners();
+    vestingWalletFactory = await smock.mock<VestingWallet__factory>('VestingWallet');
     vestingWallet = await vestingWalletFactory.connect(owner).deploy(NON_ZERO);
     dai = await smock.fake('ERC20', { address: DAI });
 
@@ -96,15 +94,14 @@ describe('VestingWallet', () => {
     });
   });
 
-  describe('addBenefit', async () => {
-    const timestamp = (await ethers.provider.getBlock('latest')).timestamp;
+  describe('addBenefit', () => {
+    const timestamp = 1_000_000_000;
     const startDate = BigNumber.from(Math.floor(timestamp / 1000));
-    const duration = BigNumber.from(60 * 60 * 24 * 3); // 3 months
+    const duration = BigNumber.from(3600 * 24 * 30 * 3); // 3 months
     const releaseDate = startDate.add(duration);
 
     context('when owner creates a ERC20 bond', () => {
       beforeEach(async () => {
-        await evm.snapshot.revert(snapshotId);
         dai.transferFrom.reset();
         dai.transferFrom.returns(true);
 
@@ -128,11 +125,10 @@ describe('VestingWallet', () => {
       });
     });
 
-    context('when owner creates a ETH bond', async () => {
+    context('when owner creates a ETH bond', () => {
       const ETH_VEST_AMOUNT = toUnit(8);
 
       beforeEach(async () => {
-        await evm.snapshot.revert(snapshotId);
         await vestingWallet.connect(owner)['addBenefit(uint64,uint64)'](startDate, duration, {
           value: ETH_VEST_AMOUNT,
         });
@@ -152,6 +148,56 @@ describe('VestingWallet', () => {
 
       it('should update startDatePerToken', async () => {
         expect(await vestingWallet.callStatic.startDatePerToken(ETH)).to.equal(startDate);
+      });
+    });
+  });
+
+  describe('sendDust', () => {
+    const ONE_ETH = toUnit(1);
+    const TEN_DAIs = toUnit(10);
+
+    it('should revert if the address is neither an ERC20 nor ETH', async () => {
+      await expect(vestingWallet.connect(owner)['sendDust(address)'](vestingWallet.address)).to.be.revertedWith(
+        "Transaction reverted: function selector was not recognized and there's no fallback function"
+      );
+    });
+
+    it('should revert if transfer fails', async () => {
+      await expect(vestingWallet.connect(owner)['sendDust(address)'](dai.address)).to.be.revertedWith(
+        'SafeERC20: ERC20 operation did not succeed'
+      );
+    });
+
+    context('when the function is called with the correct parameters', () => {
+      beforeEach(async () => {
+        await ethProvider.sendTransaction({
+          to: vestingWallet.address,
+          value: ONE_ETH,
+        });
+      });
+
+      it('should transfer ETH successfully', async () => {
+        const initialBalance = await owner.getBalance();
+        const tx = await vestingWallet.connect(owner)['sendDust()']();
+
+        const gasUsed = (await tx.wait()).gasUsed;
+        const gasPrice = (await tx.wait()).effectiveGasPrice;
+        const gasCost = gasUsed.mul(gasPrice).toNumber();
+
+        const finalBalance = await owner.getBalance();
+
+        expect(finalBalance.sub(initialBalance)).to.equal(ONE_ETH.sub(gasCost));
+      });
+
+      it('should emit an event if the transfer is successful', async () => {
+        await expect(vestingWallet.connect(owner)['sendDust()']()).to.emit(vestingWallet, 'DustSent').withArgs(ETH, ONE_ETH, owner.address);
+      });
+
+      it('should call the transfer with the correct arguments', async () => {
+        dai.transfer.returns(true);
+        dai.balanceOf.returns(TEN_DAIs);
+        await vestingWallet.connect(owner)['sendDust(address)'](dai.address);
+        expect(dai.transfer).to.have.been.calledWith(owner.address, TEN_DAIs);
       });
     });
   });
