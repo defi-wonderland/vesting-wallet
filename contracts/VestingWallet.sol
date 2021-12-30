@@ -39,6 +39,7 @@ contract VestingWallet is IVestingWallet {
   /**
    * @dev The contract should be able to receive Eth.
    */
+  // solhint-disable no-empty-blocks
   receive() external payable {}
 
   function addBenefit(
@@ -47,7 +48,7 @@ contract VestingWallet is IVestingWallet {
     address _token,
     uint256 _amount
   ) external override onlyOwner {
-    if (startDatePerToken[_token] != 0) {
+    if (amountPerToken[_token] != 0) {
       revert NoOverloads();
     }
 
@@ -62,6 +63,32 @@ contract VestingWallet is IVestingWallet {
     startDatePerToken[_eth] = _startDate;
     releaseDatePerToken[_eth] = _startDate + _duration;
     amountPerToken[_eth] += msg.value;
+  }
+
+  function removeBenefit() external override onlyOwner {
+    release();
+
+    uint256 transferToOwner = amountPerToken[_eth] - releasedPerToken[_eth];
+
+    releasedPerToken[_eth] = 0;
+    amountPerToken[_eth] = 0;
+
+    if (transferToOwner != 0) {
+      Address.sendValue(payable(msg.sender), transferToOwner);
+    }
+  }
+
+  function removeBenefit(address _token) external override onlyOwner {
+    release(_token);
+
+    uint256 transferToOwner = amountPerToken[_token] - releasedPerToken[_token];
+
+    releasedPerToken[_token] = 0;
+    amountPerToken[_token] = 0;
+
+    if (transferToOwner != 0) {
+      IERC20(_token).safeTransfer(msg.sender, transferToOwner);
+    }
   }
 
   /**

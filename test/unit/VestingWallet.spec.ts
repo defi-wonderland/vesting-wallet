@@ -4,14 +4,11 @@ import { SignerWithAddress } from '@nomiclabs/hardhat-ethers/dist/src/signers';
 import { ethers } from 'hardhat';
 import { VestingWallet, VestingWallet__factory } from '@typechained';
 import { evm } from '@utils';
-import { DAI, ETH, NON_ZERO } from '@utils/constants';
-import { BigNumber } from '@ethersproject/bignumber';
+import { DAI_ADDRESS, DURATION, ETH_ADDRESS, NON_ZERO, PARTIAL_DURATION, START_DATE, VEST_AMOUNT } from '@utils/constants';
 import { FakeContract, MockContract, MockContractFactory, smock } from '@defi-wonderland/smock';
 import chai, { expect } from 'chai';
 
 chai.use(smock.matchers);
-
-const VEST_AMOUNT = toUnit(100);
 
 describe('VestingWallet', () => {
   let vestingWallet: MockContract<VestingWallet>;
@@ -25,7 +22,7 @@ describe('VestingWallet', () => {
     [ethProvider, owner] = await ethers.getSigners();
     vestingWalletFactory = await smock.mock<VestingWallet__factory>('VestingWallet');
     vestingWallet = await vestingWalletFactory.connect(owner).deploy(NON_ZERO);
-    dai = await smock.fake('ERC20', { address: DAI });
+    dai = await smock.fake('ERC20', { address: DAI_ADDRESS });
 
     snapshotId = await evm.snapshot.take();
   });
@@ -34,78 +31,75 @@ describe('VestingWallet', () => {
     await evm.snapshot.revert(snapshotId);
   });
 
+  after(async () => {
+    await evm.snapshot.revert(snapshotId);
+  });
+
   it('should set the beneficiary address', async () => {
     expect(await vestingWallet.beneficiary()).to.equal(NON_ZERO);
   });
 
   describe('vestedAmount', () => {
-    const startDate = 100_000_000_000; // timestamp in the future
-    const duration = 1_000_000;
-    const partialDuration = 700_000;
-
     context('using ERC20', () => {
       beforeEach(async () => {
         dai.transferFrom.reset();
         dai.transferFrom.returns(true);
 
-        await vestingWallet.connect(owner)['addBenefit(uint64,uint64,address,uint256)'](startDate, duration, DAI, VEST_AMOUNT);
+        await vestingWallet.connect(owner)['addBenefit(uint64,uint64,address,uint256)'](START_DATE, DURATION, DAI_ADDRESS, VEST_AMOUNT);
       });
 
       it('should return 0 if vest has not yet started', async () => {
-        await evm.advanceToTimeAndBlock(startDate - 1);
-        expect(await vestingWallet['vestedAmount(address)'](DAI)).to.be.eq(0);
+        await evm.advanceToTimeAndBlock(START_DATE - 1);
+        expect(await vestingWallet['vestedAmount(address)'](DAI_ADDRESS)).to.be.eq(0);
       });
 
       it('should return total bonds if vest has finalized', async () => {
-        await evm.advanceToTimeAndBlock(startDate + duration + 1);
-        expect(await vestingWallet['vestedAmount(address)'](DAI)).to.be.eq(VEST_AMOUNT);
+        await evm.advanceToTimeAndBlock(START_DATE + DURATION + 1);
+        expect(await vestingWallet['vestedAmount(address)'](DAI_ADDRESS)).to.be.eq(VEST_AMOUNT);
       });
 
       it('should return a partial amount if vest is ongoing', async () => {
-        await evm.advanceToTimeAndBlock(startDate + partialDuration);
-        expect(await vestingWallet['vestedAmount(address)'](DAI)).to.be.eq(VEST_AMOUNT.mul(partialDuration).div(duration));
+        await evm.advanceToTimeAndBlock(START_DATE + PARTIAL_DURATION);
+        expect(await vestingWallet['vestedAmount(address)'](DAI_ADDRESS)).to.be.eq(VEST_AMOUNT.mul(PARTIAL_DURATION).div(DURATION));
       });
     });
 
     context('using ETH', () => {
       beforeEach(async () => {
-        await vestingWallet.connect(owner)['addBenefit(uint64,uint64)'](startDate, duration, { value: VEST_AMOUNT });
+        await vestingWallet.connect(owner)['addBenefit(uint64,uint64)'](START_DATE, DURATION, { value: VEST_AMOUNT });
       });
 
       it('should return 0 if vest has not yet started', async () => {
-        await evm.advanceToTimeAndBlock(startDate - 1);
+        await evm.advanceToTimeAndBlock(START_DATE - 1);
         expect(await vestingWallet['vestedAmount()']()).to.be.eq(0);
       });
 
       it('should return total bonds if vest has finalized', async () => {
-        await evm.advanceToTimeAndBlock(startDate + duration + 1);
+        await evm.advanceToTimeAndBlock(START_DATE + DURATION + 1);
         expect(await vestingWallet['vestedAmount()']()).to.be.eq(VEST_AMOUNT);
       });
 
       it('should return a partial amount if vest is ongoing', async () => {
-        await evm.advanceToTimeAndBlock(startDate + partialDuration);
-        expect(await vestingWallet['vestedAmount()']()).to.be.eq(VEST_AMOUNT.mul(partialDuration).div(duration));
+        await evm.advanceToTimeAndBlock(START_DATE + PARTIAL_DURATION);
+        expect(await vestingWallet['vestedAmount()']()).to.be.eq(VEST_AMOUNT.mul(PARTIAL_DURATION).div(DURATION));
       });
 
       it('should be able to use ETH address', async () => {
-        await evm.advanceToTimeAndBlock(startDate + duration);
-        expect(await vestingWallet['vestedAmount(address)'](ETH)).to.be.eq(VEST_AMOUNT);
+        await evm.advanceToTimeAndBlock(START_DATE + DURATION);
+        expect(await vestingWallet['vestedAmount(address)'](ETH_ADDRESS)).to.be.eq(VEST_AMOUNT);
       });
     });
   });
 
   describe('addBenefit', () => {
-    const timestamp = 1_000_000_000;
-    const startDate = BigNumber.from(Math.floor(timestamp / 1000));
-    const duration = BigNumber.from(3600 * 24 * 30 * 3); // 3 months
-    const releaseDate = startDate.add(duration);
+    const RELEASE_DATE = START_DATE + DURATION;
 
     context('when owner creates a ERC20 bond', () => {
       beforeEach(async () => {
         dai.transferFrom.reset();
         dai.transferFrom.returns(true);
 
-        await vestingWallet.connect(owner)['addBenefit(uint64,uint64,address,uint256)'](startDate, duration, DAI, VEST_AMOUNT);
+        await vestingWallet.connect(owner)['addBenefit(uint64,uint64,address,uint256)'](START_DATE, DURATION, DAI_ADDRESS, VEST_AMOUNT);
       });
 
       it('should transfer the token to the contract', async () => {
@@ -113,15 +107,15 @@ describe('VestingWallet', () => {
       });
 
       it('should update amountPerToken', async () => {
-        expect(await vestingWallet.callStatic.amountPerToken(DAI)).to.equal(VEST_AMOUNT);
+        expect(await vestingWallet.callStatic.amountPerToken(DAI_ADDRESS)).to.equal(VEST_AMOUNT);
       });
 
       it('should update releaseDatePerToken', async () => {
-        expect(await vestingWallet.callStatic.releaseDatePerToken(DAI)).to.equal(releaseDate);
+        expect(await vestingWallet.callStatic.releaseDatePerToken(DAI_ADDRESS)).to.equal(RELEASE_DATE);
       });
 
       it('should update startDatePerToken', async () => {
-        expect(await vestingWallet.callStatic.startDatePerToken(DAI)).to.equal(startDate);
+        expect(await vestingWallet.callStatic.startDatePerToken(DAI_ADDRESS)).to.equal(START_DATE);
       });
     });
 
@@ -129,7 +123,7 @@ describe('VestingWallet', () => {
       const ETH_VEST_AMOUNT = toUnit(8);
 
       beforeEach(async () => {
-        await vestingWallet.connect(owner)['addBenefit(uint64,uint64)'](startDate, duration, {
+        await vestingWallet.connect(owner)['addBenefit(uint64,uint64)'](START_DATE, DURATION, {
           value: ETH_VEST_AMOUNT,
         });
       });
@@ -139,15 +133,15 @@ describe('VestingWallet', () => {
       });
 
       it('should update amountPerToken', async () => {
-        expect(await vestingWallet.callStatic.amountPerToken(ETH)).to.equal(ETH_VEST_AMOUNT);
+        expect(await vestingWallet.callStatic.amountPerToken(ETH_ADDRESS)).to.equal(ETH_VEST_AMOUNT);
       });
 
       it('should update releaseDatePerToken', async () => {
-        expect(await vestingWallet.callStatic.releaseDatePerToken(ETH)).to.equal(releaseDate);
+        expect(await vestingWallet.callStatic.releaseDatePerToken(ETH_ADDRESS)).to.equal(RELEASE_DATE);
       });
 
       it('should update startDatePerToken', async () => {
-        expect(await vestingWallet.callStatic.startDatePerToken(ETH)).to.equal(startDate);
+        expect(await vestingWallet.callStatic.startDatePerToken(ETH_ADDRESS)).to.equal(START_DATE);
       });
     });
   });
@@ -190,7 +184,9 @@ describe('VestingWallet', () => {
       });
 
       it('should emit an event if the transfer is successful', async () => {
-        await expect(vestingWallet.connect(owner)['sendDust()']()).to.emit(vestingWallet, 'DustSent').withArgs(ETH, ONE_ETH, owner.address);
+        await expect(vestingWallet.connect(owner)['sendDust()']())
+          .to.emit(vestingWallet, 'DustSent')
+          .withArgs(ETH_ADDRESS, ONE_ETH, owner.address);
       });
 
       it('should call the transfer with the correct arguments', async () => {

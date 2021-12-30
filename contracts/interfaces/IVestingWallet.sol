@@ -25,6 +25,10 @@ interface IVestingWallet is IDustCollector {
 
   function releasedPerToken(address _token) external returns (uint256);
 
+  function removeBenefit() external;
+
+  function removeBenefit(address _token) external;
+
   function startDatePerToken(address _token) external returns (uint64);
 
   function vestedAmount() external returns (uint256);
