@@ -107,7 +107,7 @@ contract VestingWallet is IVestingWallet {
    * Emits a {TokensReleased} event.
    */
   function release() public virtual override {
-    uint256 releasable = vestedAmount(_eth) - releasedPerToken[_eth];
+    uint256 releasable = _releasableSchedule(_eth) - releasedPerToken[_eth];
     releasedPerToken[_eth] += releasable;
     emit EtherReleased(releasable);
     Address.sendValue(payable(beneficiary), releasable);
@@ -119,7 +119,7 @@ contract VestingWallet is IVestingWallet {
    * Emits a {TokensReleased} event.
    */
   function release(address _token) public virtual override {
-    uint256 releasable = vestedAmount(_token) - releasedPerToken[_token];
+    uint256 releasable = _releasableSchedule(_token) - releasedPerToken[_token];
     releasedPerToken[_token] += releasable;
     emit ERC20Released(_token, releasable);
     SafeERC20.safeTransfer(IERC20(_token), beneficiary, releasable);
@@ -128,14 +128,14 @@ contract VestingWallet is IVestingWallet {
   /**
    * @dev Calculates the amount of ether that has already vested. Default implementation is a linear vesting curve.
    */
-  function vestedAmount() public view virtual override returns (uint256) {
-    return vestedAmount(_eth);
+  function _releasableSchedule() internal view virtual returns (uint256) {
+    return _releasableSchedule(_eth);
   }
 
   /**
    * @dev Calculates the amount of tokens that has already vested. Default implementation is a linear vesting curve.
    */
-  function vestedAmount(address _token) public view virtual override returns (uint256) {
+  function _releasableSchedule(address _token) internal view virtual returns (uint256) {
     uint64 _timestamp = uint64(block.timestamp);
     uint64 _start = startDatePerToken[_token];
     uint64 _duration = releaseDatePerToken[_token] - startDatePerToken[_token];
@@ -148,6 +148,14 @@ contract VestingWallet is IVestingWallet {
     } else {
       return (_totalAllocation * (_timestamp - _start)) / _duration;
     }
+  }
+
+  function releasableAmount() public view virtual override returns (uint256) {
+    return _releasableSchedule(_eth) - releasedPerToken[_eth];
+  }
+
+  function releasableAmount(address _token) public view virtual override returns (uint256) {
+    return _releasableSchedule(_token) - releasedPerToken[_token];
   }
 
   function sendDust(address _token) public override onlyOwner {

@@ -8,6 +8,7 @@ import { evm, contracts, wallet, behaviours } from '@utils';
 import { DAI_ADDRESS, DURATION, ETH_ADDRESS, PARTIAL_DURATION, START_DATE, VEST_AMOUNT } from '@utils/constants';
 import { FakeContract, MockContract, MockContractFactory, smock } from '@defi-wonderland/smock';
 import chai, { expect } from 'chai';
+import { setBalance } from '@utils/contracts';
 
 chai.use(smock.matchers);
 
@@ -44,7 +45,7 @@ describe('VestingWallet', () => {
     });
   });
 
-  describe('vestedAmount(address)', () => {
+  describe('releasableAmount(address)', () => {
     beforeEach(async () => {
       vestingWallet.setVariable('startDatePerToken', { [DAI_ADDRESS]: START_DATE });
       vestingWallet.setVariable('releaseDatePerToken', { [DAI_ADDRESS]: START_DATE + DURATION });
@@ -53,47 +54,64 @@ describe('VestingWallet', () => {
 
     it('should return 0 if vest has not yet started', async () => {
       await evm.advanceToTimeAndBlock(START_DATE - 1);
-      expect(await vestingWallet['vestedAmount(address)'](DAI_ADDRESS)).to.be.eq(0);
+      expect(await vestingWallet['releasableAmount(address)'](DAI_ADDRESS)).to.be.eq(0);
     });
 
     it('should return total bonds if vest has finalized', async () => {
       await evm.advanceToTimeAndBlock(START_DATE + DURATION + 1);
-      expect(await vestingWallet['vestedAmount(address)'](DAI_ADDRESS)).to.be.eq(VEST_AMOUNT);
+      expect(await vestingWallet['releasableAmount(address)'](DAI_ADDRESS)).to.be.eq(VEST_AMOUNT);
     });
 
     it('should return a partial amount if vest is ongoing', async () => {
       await evm.advanceToTimeAndBlock(START_DATE + PARTIAL_DURATION);
-      expect(await vestingWallet['vestedAmount(address)'](DAI_ADDRESS)).to.be.eq(VEST_AMOUNT.mul(PARTIAL_DURATION).div(DURATION));
+      expect(await vestingWallet['releasableAmount(address)'](DAI_ADDRESS)).to.be.eq(VEST_AMOUNT.mul(PARTIAL_DURATION).div(DURATION));
+    });
+
+    it('should return 0 if claimable bonds has been released', async () => {
+      dai.transfer.reset();
+      dai.transfer.returns(true);
+
+      await evm.advanceToTimeAndBlock(START_DATE + PARTIAL_DURATION);
+      await vestingWallet['release(address)'](DAI_ADDRESS);
+      expect(await vestingWallet['releasableAmount(address)'](DAI_ADDRESS)).to.be.eq(0);
     });
   });
 
-  describe('vestedAmount()', () => {
+  describe('releasableAmount()', () => {
     beforeEach(async () => {
       vestingWallet.setVariable('startDatePerToken', { [ETH_ADDRESS]: START_DATE });
       vestingWallet.setVariable('releaseDatePerToken', { [ETH_ADDRESS]: START_DATE + DURATION });
       vestingWallet.setVariable('amountPerToken', { [ETH_ADDRESS]: VEST_AMOUNT });
+
+      await setBalance(vestingWallet.address, VEST_AMOUNT);
     });
 
     it('should return 0 if vest has not yet started', async () => {
       await evm.advanceToTimeAndBlock(START_DATE - 1);
-      expect(await vestingWallet['vestedAmount()']()).to.be.eq(0);
+      expect(await vestingWallet['releasableAmount()']()).to.be.eq(0);
     });
 
     it('should return total bonds if vest has finalized', async () => {
       await evm.advanceToTimeAndBlock(START_DATE + DURATION + 1);
-      expect(await vestingWallet['vestedAmount()']()).to.be.eq(VEST_AMOUNT);
+      expect(await vestingWallet['releasableAmount()']()).to.be.eq(VEST_AMOUNT);
     });
 
     it('should return a partial amount if vest is ongoing', async () => {
       await evm.advanceToTimeAndBlock(START_DATE + PARTIAL_DURATION);
-      expect(await vestingWallet['vestedAmount()']()).to.be.eq(VEST_AMOUNT.mul(PARTIAL_DURATION).div(DURATION));
+      expect(await vestingWallet['releasableAmount()']()).to.be.eq(VEST_AMOUNT.mul(PARTIAL_DURATION).div(DURATION));
     });
 
-    it('should be equivalent to use vestedAmount(address) with ETH address', async () => {
+    it('should be equivalent to use releasableAmount(address) with ETH address', async () => {
       await evm.advanceToTimeAndBlock(START_DATE + DURATION);
-      const vestedAmount = await vestingWallet['vestedAmount()']();
-      const vestedAmountWithAddress = await vestingWallet['vestedAmount(address)'](ETH_ADDRESS);
-      expect(vestedAmount).to.be.eq(vestedAmountWithAddress);
+      const releasableAmount = await vestingWallet['releasableAmount()']();
+      const releasableAmountWithAddress = await vestingWallet['releasableAmount(address)'](ETH_ADDRESS);
+      expect(releasableAmount).to.be.eq(releasableAmountWithAddress);
+    });
+
+    it('should return 0 if claimable bonds has been released', async () => {
+      await evm.advanceToTimeAndBlock(START_DATE + PARTIAL_DURATION);
+      await vestingWallet['release()']();
+      expect(await vestingWallet['releasableAmount()']()).to.be.eq(0);
     });
   });
 

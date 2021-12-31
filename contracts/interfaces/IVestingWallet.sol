@@ -31,9 +31,9 @@ interface IVestingWallet is IDustCollector {
 
   function startDatePerToken(address _token) external returns (uint64);
 
-  function vestedAmount() external returns (uint256);
+  function releasableAmount() external returns (uint256);
 
-  function vestedAmount(address _token) external returns (uint256);
+  function releasableAmount(address _token) external returns (uint256);
 
   event ERC20Released(address indexed token, uint256 amount);
   event EtherReleased(uint256 amount);
