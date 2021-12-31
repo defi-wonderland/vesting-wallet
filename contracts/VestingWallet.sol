@@ -126,13 +126,6 @@ contract VestingWallet is IVestingWallet {
   }
 
   /**
-   * @dev Calculates the amount of ether that has already vested. Default implementation is a linear vesting curve.
-   */
-  function _releasableSchedule() internal view virtual returns (uint256) {
-    return _releasableSchedule(_eth);
-  }
-
-  /**
    * @dev Calculates the amount of tokens that has already vested. Default implementation is a linear vesting curve.
    */
   function _releasableSchedule(address _token) internal view virtual returns (uint256) {

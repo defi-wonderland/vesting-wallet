@@ -125,27 +125,102 @@ describe('VestingWallet', () => {
       VEST_AMOUNT,
     ]);
 
-    beforeEach(async () => {
-      dai.transferFrom.reset();
-      dai.transferFrom.returns(true);
+    context('when there was no previous benefit', () => {
+      beforeEach(async () => {
+        dai.transferFrom.reset();
+        dai.transferFrom.returns(true);
 
-      await vestingWallet.connect(owner)['addBenefit(uint64,uint64,address,uint256)'](START_DATE, DURATION, DAI_ADDRESS, VEST_AMOUNT);
+        await vestingWallet.connect(owner)['addBenefit(uint64,uint64,address,uint256)'](START_DATE, DURATION, DAI_ADDRESS, VEST_AMOUNT);
+      });
+
+      it('should transfer the token to the contract', async () => {
+        expect(dai.transferFrom).to.be.calledOnce;
+      });
+
+      it('should update amountPerToken', async () => {
+        expect(await vestingWallet.callStatic.amountPerToken(DAI_ADDRESS)).to.equal(VEST_AMOUNT);
+      });
+
+      it('should update releaseDatePerToken', async () => {
+        expect(await vestingWallet.callStatic.releaseDatePerToken(DAI_ADDRESS)).to.equal(RELEASE_DATE);
+      });
+
+      it('should update startDatePerToken', async () => {
+        expect(await vestingWallet.callStatic.startDatePerToken(DAI_ADDRESS)).to.equal(START_DATE);
+      });
     });
 
-    it('should transfer the token to the contract', async () => {
-      expect(dai.transferFrom).to.be.calledOnce;
-    });
+    context('when there was a previous benefit', () => {
+      const NEW_START_DATE = START_DATE * 10;
 
-    it('should update amountPerToken', async () => {
-      expect(await vestingWallet.callStatic.amountPerToken(DAI_ADDRESS)).to.equal(VEST_AMOUNT);
-    });
+      beforeEach(async () => {
+        dai.transfer.reset();
+        dai.transfer.returns(true);
+        dai.transferFrom.reset();
+        dai.transferFrom.returns(true);
+        vestingWallet.setVariable('startDatePerToken', { [DAI_ADDRESS]: START_DATE });
+        vestingWallet.setVariable('releaseDatePerToken', { [DAI_ADDRESS]: START_DATE + DURATION });
+        vestingWallet.setVariable('amountPerToken', { [DAI_ADDRESS]: VEST_AMOUNT });
+      });
 
-    it('should update releaseDatePerToken', async () => {
-      expect(await vestingWallet.callStatic.releaseDatePerToken(DAI_ADDRESS)).to.equal(RELEASE_DATE);
-    });
+      it('should overwrite start date', async () => {
+        await vestingWallet.connect(owner)['addBenefit(uint64,uint64,address,uint256)'](NEW_START_DATE, DURATION, DAI_ADDRESS, VEST_AMOUNT);
 
-    it('should update startDatePerToken', async () => {
-      expect(await vestingWallet.callStatic.startDatePerToken(DAI_ADDRESS)).to.equal(START_DATE);
+        expect(await vestingWallet.startDatePerToken(DAI_ADDRESS)).to.eq(NEW_START_DATE);
+      });
+
+      it('should overwrite release date', async () => {
+        await vestingWallet.connect(owner)['addBenefit(uint64,uint64,address,uint256)'](NEW_START_DATE, DURATION, DAI_ADDRESS, VEST_AMOUNT);
+
+        expect(await vestingWallet.releaseDatePerToken(DAI_ADDRESS)).to.eq(NEW_START_DATE + DURATION);
+      });
+
+      context('when previous benefit has not yet started', () => {
+        it('should add previous amount to new benefit', async () => {
+          await vestingWallet.connect(owner)['addBenefit(uint64,uint64,address,uint256)'](NEW_START_DATE, DURATION, DAI_ADDRESS, VEST_AMOUNT);
+
+          expect(await vestingWallet.amountPerToken(DAI_ADDRESS)).to.eq(VEST_AMOUNT.mul(2));
+        });
+      });
+
+      context('when previous benefit is ongoing', () => {
+        const PARTIAL_PROPORTION = 3;
+        let timestamp: number;
+        let partialDuration: number;
+        let partialBenefit: BigNumber;
+
+        beforeEach(async () => {
+          await evm.advanceToTimeAndBlock(START_DATE + DURATION / PARTIAL_PROPORTION);
+          await vestingWallet.connect(owner)['addBenefit(uint64,uint64,address,uint256)'](NEW_START_DATE, DURATION, DAI_ADDRESS, VEST_AMOUNT);
+          // query latest block timestamp for precise calculation
+          timestamp = (await ethers.provider.getBlock('latest')).timestamp;
+          partialDuration = timestamp - START_DATE;
+          partialBenefit = VEST_AMOUNT.mul(partialDuration).div(DURATION);
+        });
+
+        it('should release ongoing benefit', async () => {
+          expect(dai.transfer).to.have.been.calledWith(beneficiary, partialBenefit);
+        });
+
+        it('should add remaining amount to new benefit', async () => {
+          expect(await vestingWallet.amountPerToken(DAI_ADDRESS)).to.eq(VEST_AMOUNT.add(VEST_AMOUNT.sub(partialBenefit)));
+        });
+      });
+
+      context('when previous benefit has ended', () => {
+        beforeEach(async () => {
+          await evm.advanceToTimeAndBlock(START_DATE + DURATION);
+          await vestingWallet.connect(owner)['addBenefit(uint64,uint64,address,uint256)'](NEW_START_DATE, DURATION, DAI_ADDRESS, VEST_AMOUNT);
+        });
+
+        it('should release all previous benefit', async () => {
+          expect(dai.transfer).to.have.been.calledWith(beneficiary, VEST_AMOUNT);
+        });
+
+        it('should not add any amount to new benefit', async () => {
+          expect(await vestingWallet.amountPerToken(DAI_ADDRESS)).to.eq(VEST_AMOUNT);
+        });
+      });
     });
   });
 
@@ -154,26 +229,97 @@ describe('VestingWallet', () => {
 
     behaviours.onlyOwner(() => vestingWallet, 'addBenefit(uint64,uint64)', owner, [START_DATE, DURATION]);
 
-    beforeEach(async () => {
-      await vestingWallet.connect(owner)['addBenefit(uint64,uint64)'](START_DATE, DURATION, {
-        value: VEST_AMOUNT,
+    context('when there was no previous benefit', () => {
+      beforeEach(async () => {
+        await vestingWallet.connect(owner)['addBenefit(uint64,uint64)'](START_DATE, DURATION, {
+          value: VEST_AMOUNT,
+        });
+      });
+
+      it('should transfer the token to the contract', async () => {
+        expect(await ethers.provider.getBalance(vestingWallet.address)).to.equal(VEST_AMOUNT);
+      });
+
+      it('should update amountPerToken', async () => {
+        expect(await vestingWallet.callStatic.amountPerToken(ETH_ADDRESS)).to.equal(VEST_AMOUNT);
+      });
+
+      it('should update releaseDatePerToken', async () => {
+        expect(await vestingWallet.callStatic.releaseDatePerToken(ETH_ADDRESS)).to.equal(RELEASE_DATE);
+      });
+
+      it('should update startDatePerToken', async () => {
+        expect(await vestingWallet.callStatic.startDatePerToken(ETH_ADDRESS)).to.equal(START_DATE);
       });
     });
 
-    it('should transfer the token to the contract', async () => {
-      expect(await ethers.provider.getBalance(vestingWallet.address)).to.equal(VEST_AMOUNT);
-    });
+    context('when there was a previous benefit', () => {
+      const NEW_START_DATE = START_DATE * 10;
 
-    it('should update amountPerToken', async () => {
-      expect(await vestingWallet.callStatic.amountPerToken(ETH_ADDRESS)).to.equal(VEST_AMOUNT);
-    });
+      beforeEach(async () => {
+        vestingWallet.setVariable('startDatePerToken', { [ETH_ADDRESS]: START_DATE });
+        vestingWallet.setVariable('releaseDatePerToken', { [ETH_ADDRESS]: START_DATE + DURATION });
+        vestingWallet.setVariable('amountPerToken', { [ETH_ADDRESS]: VEST_AMOUNT });
+      });
 
-    it('should update releaseDatePerToken', async () => {
-      expect(await vestingWallet.callStatic.releaseDatePerToken(ETH_ADDRESS)).to.equal(RELEASE_DATE);
-    });
+      it('should overwrite start date', async () => {
+        await vestingWallet.connect(owner)['addBenefit(uint64,uint64)'](NEW_START_DATE, DURATION, { value: VEST_AMOUNT });
 
-    it('should update startDatePerToken', async () => {
-      expect(await vestingWallet.callStatic.startDatePerToken(ETH_ADDRESS)).to.equal(START_DATE);
+        expect(await vestingWallet.startDatePerToken(ETH_ADDRESS)).to.eq(NEW_START_DATE);
+      });
+
+      it('should overwrite release date', async () => {
+        await vestingWallet.connect(owner)['addBenefit(uint64,uint64)'](NEW_START_DATE, DURATION, { value: VEST_AMOUNT });
+
+        expect(await vestingWallet.releaseDatePerToken(ETH_ADDRESS)).to.eq(NEW_START_DATE + DURATION);
+      });
+
+      context('when previous benefit has not yet started', () => {
+        it('should add previous amount to new benefit', async () => {
+          await vestingWallet.connect(owner)['addBenefit(uint64,uint64)'](NEW_START_DATE, DURATION, { value: VEST_AMOUNT });
+
+          expect(await vestingWallet.amountPerToken(ETH_ADDRESS)).to.eq(VEST_AMOUNT.mul(2));
+        });
+      });
+
+      context('when previous benefit is ongoing', () => {
+        const PARTIAL_PROPORTION = 3;
+        let timestamp: number;
+        let partialDuration: number;
+        let partialBenefit: BigNumber;
+
+        beforeEach(async () => {
+          await evm.advanceToTimeAndBlock(START_DATE + DURATION / PARTIAL_PROPORTION);
+          await vestingWallet.connect(owner)['addBenefit(uint64,uint64)'](NEW_START_DATE, DURATION, { value: VEST_AMOUNT });
+          // query latest block timestamp for precise calculation
+          timestamp = (await ethers.provider.getBlock('latest')).timestamp;
+          partialDuration = timestamp - START_DATE;
+          partialBenefit = VEST_AMOUNT.mul(partialDuration).div(DURATION);
+        });
+
+        it('should release ongoing benefit', async () => {
+          expect(await ethers.provider.getBalance(beneficiary)).to.eq(partialBenefit);
+        });
+
+        it('should add remaining amount to new benefit', async () => {
+          expect(await vestingWallet.amountPerToken(ETH_ADDRESS)).to.eq(VEST_AMOUNT.add(VEST_AMOUNT.sub(partialBenefit)));
+        });
+      });
+
+      context('when previous benefit has ended', () => {
+        beforeEach(async () => {
+          await evm.advanceToTimeAndBlock(START_DATE + DURATION);
+          await vestingWallet.connect(owner)['addBenefit(uint64,uint64)'](NEW_START_DATE, DURATION, { value: VEST_AMOUNT });
+        });
+
+        it('should release all previous benefit', async () => {
+          expect(await ethers.provider.getBalance(beneficiary)).to.eq(VEST_AMOUNT);
+        });
+
+        it('should not add any amount to new benefit', async () => {
+          expect(await vestingWallet.amountPerToken(ETH_ADDRESS)).to.eq(VEST_AMOUNT);
+        });
+      });
     });
   });
 
