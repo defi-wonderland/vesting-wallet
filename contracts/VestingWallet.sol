@@ -2,9 +2,10 @@
 // OpenZeppelin Contracts v4.4.1 (finance/VestingWallet.sol)
 pragma solidity ^0.8.0;
 
-import '@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol';
 import '@openzeppelin/contracts/token/ERC20/IERC20.sol';
+import '@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol';
 import '@openzeppelin/contracts/utils/Address.sol';
+import '@openzeppelin/contracts/utils/structs/EnumerableSet.sol';
 import './interfaces/IVestingWallet.sol';
 
 /**
@@ -20,20 +21,22 @@ import './interfaces/IVestingWallet.sol';
 contract VestingWallet is IVestingWallet {
   address internal _owner;
   address internal _eth = 0xFFfFfFffFFfffFFfFFfFFFFFffFFFffffFfFFFfF;
-  address public override beneficiary;
-  mapping(address => uint256) public override amountPerToken;
-  mapping(address => uint64) public override releaseDatePerToken;
-  mapping(address => uint64) public override startDatePerToken;
-  mapping(address => uint256) public override releasedPerToken;
+  mapping(address => uint256) public override totalAmountPerToken;
+  mapping(address => mapping(address => uint256)) public override amount; // beneficiary => token => amount
+  mapping(address => mapping(address => uint64)) public override releaseDate; // beneficiary => token => releaseDate
+  mapping(address => mapping(address => uint64)) public override startDate; // beneficiary => token => startDate
+  mapping(address => mapping(address => uint256)) public override released; // beneficiary => token => released
+
+  EnumerableSet.AddressSet internal _beneficiaries;
 
   using SafeERC20 for IERC20;
+  using EnumerableSet for EnumerableSet.AddressSet;
 
   /**
    * @dev Set the beneficiary, start timestamp and vesting duration of the vesting wallet.
    */
-  constructor(address _beneficiary) {
+  constructor() {
     _owner = msg.sender;
-    beneficiary = _beneficiary;
   }
 
   /**
@@ -42,62 +45,81 @@ contract VestingWallet is IVestingWallet {
   // solhint-disable no-empty-blocks
   receive() external payable {}
 
+  function isBeneficiary(address _beneficiary) public view override returns (bool) {
+    return _beneficiaries.contains(_beneficiary);
+  }
+
   function addBenefit(
+    address _beneficiary,
     uint64 _startDate,
     uint64 _duration,
     address _token,
     uint256 _amount
-  ) external override onlyOwner {
-    if (amountPerToken[_token] != 0) {
-      release(_token);
-    }
+  ) public override onlyOwner {
+    if (_token == _eth) revert InvalidToken();
+
+    _addBenefit(_beneficiary, _startDate, _duration, _token, _amount);
 
     IERC20(_token).safeTransferFrom(msg.sender, address(this), _amount);
-
-    startDatePerToken[_token] = _startDate;
-    releaseDatePerToken[_token] = _startDate + _duration;
-
-    uint256 pendingAmount = amountPerToken[_token] - releasedPerToken[_token];
-    amountPerToken[_token] = _amount + pendingAmount;
-    releasedPerToken[_token] = 0;
   }
 
-  function addBenefit(uint64 _startDate, uint64 _duration) external payable override onlyOwner {
-    if (amountPerToken[_eth] != 0) {
-      release();
+  function addBenefit(
+    address _beneficiary,
+    uint64 _startDate,
+    uint64 _duration
+  ) external payable override onlyOwner {
+    uint256 _amount = msg.value;
+
+    _addBenefit(_beneficiary, _startDate, _duration, _eth, _amount);
+  }
+
+  function _addBenefit(
+    address _beneficiary,
+    uint64 _startDate,
+    uint64 _duration,
+    address _token,
+    uint256 _amount
+  ) internal {
+    if (!isBeneficiary(_beneficiary)) {
+      _beneficiaries.add(_beneficiary);
     }
 
-    startDatePerToken[_eth] = _startDate;
-    releaseDatePerToken[_eth] = _startDate + _duration;
-
-    uint256 pendingAmount = amountPerToken[_eth] - releasedPerToken[_eth];
-    amountPerToken[_eth] = msg.value + pendingAmount;
-    releasedPerToken[_eth] = 0;
-  }
-
-  function removeBenefit() external override onlyOwner {
-    release();
-
-    uint256 transferToOwner = amountPerToken[_eth] - releasedPerToken[_eth];
-
-    releasedPerToken[_eth] = 0;
-    amountPerToken[_eth] = 0;
-
-    if (transferToOwner != 0) {
-      Address.sendValue(payable(msg.sender), transferToOwner);
+    if (amount[_beneficiary][_token] != 0) {
+      release(_beneficiary, _token);
     }
+
+    startDate[_beneficiary][_token] = _startDate;
+    releaseDate[_beneficiary][_token] = _startDate + _duration;
+
+    uint256 pendingAmount = amount[_beneficiary][_token] - released[_beneficiary][_token];
+    amount[_beneficiary][_token] = _amount + pendingAmount;
+    totalAmountPerToken[_token] += _amount;
+    released[_beneficiary][_token] = 0;
   }
 
-  function removeBenefit(address _token) external override onlyOwner {
-    release(_token);
+  function removeBenefit(address _beneficiary) external override onlyOwner {
+    _removeBenefit(_beneficiary, _eth);
+  }
 
-    uint256 transferToOwner = amountPerToken[_token] - releasedPerToken[_token];
+  function removeBenefit(address _beneficiary, address _token) external override onlyOwner {
+    _removeBenefit(_beneficiary, _token);
+  }
 
-    releasedPerToken[_token] = 0;
-    amountPerToken[_token] = 0;
+  function _removeBenefit(address _beneficiary, address _token) internal returns (uint256 _transferToOwner) {
+    release(_beneficiary, _token);
 
-    if (transferToOwner != 0) {
-      IERC20(_token).safeTransfer(msg.sender, transferToOwner);
+    _transferToOwner = amount[_beneficiary][_token] - released[_beneficiary][_token];
+
+    released[_beneficiary][_token] = 0;
+    amount[_beneficiary][_token] = 0;
+    totalAmountPerToken[_token] -= _transferToOwner;
+
+    if (_transferToOwner != 0) {
+      if (_token != _eth) {
+        IERC20(_token).safeTransfer(msg.sender, _transferToOwner);
+      } else {
+        Address.sendValue(payable(msg.sender), _transferToOwner);
+      }
     }
   }
 
@@ -106,11 +128,8 @@ contract VestingWallet is IVestingWallet {
    *
    * Emits a {TokensReleased} event.
    */
-  function release() public virtual override {
-    uint256 releasable = _releasableSchedule(_eth) - releasedPerToken[_eth];
-    releasedPerToken[_eth] += releasable;
-    emit EtherReleased(releasable);
-    Address.sendValue(payable(beneficiary), releasable);
+  function release(address _beneficiary) public virtual override {
+    _release(_beneficiary, _eth);
   }
 
   /**
@@ -118,21 +137,36 @@ contract VestingWallet is IVestingWallet {
    *
    * Emits a {TokensReleased} event.
    */
-  function release(address _token) public virtual override {
-    uint256 releasable = _releasableSchedule(_token) - releasedPerToken[_token];
-    releasedPerToken[_token] += releasable;
-    emit ERC20Released(_token, releasable);
-    SafeERC20.safeTransfer(IERC20(_token), beneficiary, releasable);
+  function release(address _beneficiary, address _token) public virtual override {
+    _release(_beneficiary, _token);
+  }
+
+  function _release(address _beneficiary, address _token) internal {
+    uint256 releasable = _releasableSchedule(_beneficiary, _token) - released[_beneficiary][_token];
+
+    if (releasable == 0) {
+      return;
+    }
+
+    released[_beneficiary][_token] += releasable;
+    totalAmountPerToken[_token] -= releasable;
+
+    emit BenefitReleased(_token, releasable);
+    if (_token != _eth) {
+      SafeERC20.safeTransfer(IERC20(_token), _beneficiary, releasable);
+    } else {
+      Address.sendValue(payable(_beneficiary), releasable);
+    }
   }
 
   /**
    * @dev Calculates the amount of tokens that has already vested. Default implementation is a linear vesting curve.
    */
-  function _releasableSchedule(address _token) internal view virtual returns (uint256) {
+  function _releasableSchedule(address _beneficiary, address _token) internal view virtual returns (uint256) {
     uint64 _timestamp = uint64(block.timestamp);
-    uint64 _start = startDatePerToken[_token];
-    uint64 _duration = releaseDatePerToken[_token] - startDatePerToken[_token];
-    uint256 _totalAllocation = amountPerToken[_token];
+    uint64 _start = startDate[_beneficiary][_token];
+    uint64 _duration = releaseDate[_beneficiary][_token] - startDate[_beneficiary][_token];
+    uint256 _totalAllocation = amount[_beneficiary][_token];
 
     if (_timestamp < _start) {
       return 0;
@@ -143,24 +177,24 @@ contract VestingWallet is IVestingWallet {
     }
   }
 
-  function releasableAmount() public view virtual override returns (uint256) {
-    return _releasableSchedule(_eth) - releasedPerToken[_eth];
+  function releasableAmount(address _beneficiary) public view virtual override returns (uint256) {
+    return _releasableSchedule(_beneficiary, _eth) - released[_beneficiary][_eth];
   }
 
-  function releasableAmount(address _token) public view virtual override returns (uint256) {
-    return _releasableSchedule(_token) - releasedPerToken[_token];
+  function releasableAmount(address _beneficiary, address _token) public view virtual override returns (uint256) {
+    return _releasableSchedule(_beneficiary, _token) - released[_beneficiary][_token];
   }
 
   function sendDust(address _token) public override onlyOwner {
-    uint256 amount;
+    uint256 _amount;
     if (_token == _eth) {
-      amount = address(this).balance - amountPerToken[_eth];
-      payable(_owner).transfer(amount);
+      _amount = address(this).balance - totalAmountPerToken[_eth];
+      payable(_owner).transfer(_amount);
     } else {
-      amount = IERC20(_token).balanceOf(address(this)) - amountPerToken[_token];
-      IERC20(_token).safeTransfer(_owner, amount);
+      _amount = IERC20(_token).balanceOf(address(this)) - totalAmountPerToken[_token];
+      IERC20(_token).safeTransfer(_owner, _amount);
     }
-    emit DustSent(_token, amount, _owner);
+    emit DustSent(_token, _amount, _owner);
   }
 
   function sendDust() external override onlyOwner {
