@@ -14,6 +14,4 @@ interface IDustCollector is IBaseErrors {
   /// @notice Allows an authorized user to transfer the tokens or eth that may have been left in a contract
   /// @param _token The token that will be transferred
   function sendDust(address _token) external;
-
-  function sendDust() external;
 }

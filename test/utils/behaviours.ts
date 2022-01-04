@@ -9,7 +9,8 @@ chai.use(smock.matchers);
 
 export type Impersonator = Signer | Provider | string;
 
-export const onlyOwner = createOnlyCallableCheck(['owner'], 'Unauthorized()');
+export const onlyGovernance = createOnlyCallableCheck(['governance'], 'OnlyGovernance()');
+export const onlyPendingGovernance = createOnlyCallableCheck(['pending governance'], 'OnlyPendingGovernance()');
 
 export function createOnlyCallableCheck(allowedLabels: string[], error: string) {
   return (
