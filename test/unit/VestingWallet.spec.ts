@@ -21,7 +21,7 @@ describe('VestingWallet', () => {
   const beneficiary = wallet.generateRandomAddress();
 
   before(async () => {
-    [owner] = await ethers.getSigners();
+    [, owner] = await ethers.getSigners();
     vestingWalletFactory = await smock.mock<VestingWallet__factory>('VestingWallet');
     vestingWallet = await vestingWalletFactory.connect(owner).deploy(owner.address);
     dai = await smock.fake('ERC20', { address: DAI_ADDRESS });
@@ -31,6 +31,9 @@ describe('VestingWallet', () => {
 
   beforeEach(async () => {
     await evm.snapshot.revert(snapshotId);
+
+    dai.transfer.reset();
+    dai.transferFrom.reset();
   });
 
   after(async () => {
@@ -44,9 +47,9 @@ describe('VestingWallet', () => {
           [DAI_ADDRESS]: START_DATE,
         },
       });
-      await vestingWallet.setVariable('releaseDate', {
+      await vestingWallet.setVariable('_duration', {
         [beneficiary]: {
-          [DAI_ADDRESS]: START_DATE + DURATION,
+          [DAI_ADDRESS]: DURATION,
         },
       });
       await vestingWallet.setVariable('amount', {
@@ -75,7 +78,6 @@ describe('VestingWallet', () => {
     });
 
     it('should return 0 if claimable bonds has been released', async () => {
-      dai.transfer.reset();
       dai.transfer.returns(true);
 
       await evm.advanceToTimeAndBlock(START_DATE + PARTIAL_DURATION);
@@ -97,7 +99,6 @@ describe('VestingWallet', () => {
     it('should register the beneficiary if did not exist previously', async () => {
       expect(await vestingWallet.callStatic.isBeneficiary(beneficiary)).to.be.false;
 
-      dai.transferFrom.reset();
       dai.transferFrom.returns(true);
 
       await vestingWallet.connect(owner).addBenefit(beneficiary, START_DATE, DURATION, DAI_ADDRESS, VEST_AMOUNT);
@@ -107,7 +108,6 @@ describe('VestingWallet', () => {
 
     context('when there was no previous benefit', () => {
       beforeEach(async () => {
-        dai.transferFrom.reset();
         dai.transferFrom.returns(true);
 
         await vestingWallet.connect(owner).addBenefit(beneficiary, START_DATE, DURATION, DAI_ADDRESS, VEST_AMOUNT);
@@ -134,9 +134,7 @@ describe('VestingWallet', () => {
       const NEW_START_DATE = START_DATE * 10;
 
       beforeEach(async () => {
-        dai.transfer.reset();
         dai.transfer.returns(true);
-        dai.transferFrom.reset();
         dai.transferFrom.returns(true);
 
         await vestingWallet.setVariable('startDate', {
@@ -144,9 +142,9 @@ describe('VestingWallet', () => {
             [DAI_ADDRESS]: START_DATE,
           },
         });
-        await vestingWallet.setVariable('releaseDate', {
+        await vestingWallet.setVariable('_duration', {
           [beneficiary]: {
-            [DAI_ADDRESS]: START_DATE + DURATION,
+            [DAI_ADDRESS]: DURATION,
           },
         });
         await vestingWallet.setVariable('amount', {
@@ -234,9 +232,9 @@ describe('VestingWallet', () => {
           [DAI_ADDRESS]: START_DATE,
         },
       });
-      await vestingWallet.setVariable('releaseDate', {
+      await vestingWallet.setVariable('_duration', {
         [beneficiary]: {
-          [DAI_ADDRESS]: START_DATE + DURATION,
+          [DAI_ADDRESS]: DURATION,
         },
       });
       await vestingWallet.setVariable('amount', {
@@ -265,7 +263,6 @@ describe('VestingWallet', () => {
 
     context('when vesting period has not yet started', () => {
       beforeEach(async () => {
-        dai.transfer.reset();
         dai.transfer.returns(true);
 
         await evm.advanceToTime(START_DATE - 1);
@@ -283,7 +280,6 @@ describe('VestingWallet', () => {
       let partialDuration: number;
 
       beforeEach(async () => {
-        dai.transfer.reset();
         dai.transfer.returns(true);
 
         await evm.advanceToTimeAndBlock(START_DATE + DURATION / DENOMINATOR);
@@ -305,7 +301,6 @@ describe('VestingWallet', () => {
 
     context('when vesting period has ended', () => {
       beforeEach(async () => {
-        dai.transfer.reset();
         dai.transfer.returns(true);
 
         await evm.advanceToTimeAndBlock(START_DATE + DURATION);
@@ -346,6 +341,8 @@ describe('VestingWallet', () => {
     });
 
     it('should emit an event', async () => {
+      dai.transfer.returns(true);
+
       await expect(vestingWallet.connect(owner).sendDust(DAI_ADDRESS))
         .to.emit(vestingWallet, 'DustSent')
         .withArgs(DAI_ADDRESS, TEN_DAIs, owner.address);
@@ -362,9 +359,9 @@ describe('VestingWallet', () => {
           [DAI_ADDRESS]: START_DATE,
         },
       });
-      await vestingWallet.setVariable('releaseDate', {
+      await vestingWallet.setVariable('_duration', {
         [beneficiary]: {
-          [DAI_ADDRESS]: START_DATE + DURATION,
+          [DAI_ADDRESS]: DURATION,
         },
       });
       await vestingWallet.setVariable('amount', {
@@ -378,7 +375,6 @@ describe('VestingWallet', () => {
     });
 
     it('should revert if transfer fails', async () => {
-      dai.transfer.reset();
       dai.transfer.reverts();
       await evm.advanceToTimeAndBlock(START_DATE + DURATION / DENOMINATOR);
 
@@ -386,7 +382,6 @@ describe('VestingWallet', () => {
     });
 
     it('should revert if transfer does not succeed', async () => {
-      dai.transfer.reset();
       dai.transfer.returns(false);
       await evm.advanceToTimeAndBlock(START_DATE + DURATION / DENOMINATOR);
 
@@ -397,8 +392,6 @@ describe('VestingWallet', () => {
 
     context('when vesting period has not yet started', () => {
       beforeEach(async () => {
-        dai.transfer.reset();
-
         await evm.advanceToTime(START_DATE - 1);
       });
 
@@ -417,7 +410,6 @@ describe('VestingWallet', () => {
       let partialDuration: number;
 
       beforeEach(async () => {
-        dai.transfer.reset();
         dai.transfer.returns(true);
 
         await evm.advanceToTimeAndBlock(START_DATE + DURATION / DENOMINATOR);
@@ -439,7 +431,6 @@ describe('VestingWallet', () => {
 
     context('when vesting period has ended', () => {
       beforeEach(async () => {
-        dai.transfer.reset();
         dai.transfer.returns(true);
 
         await evm.advanceToTimeAndBlock(START_DATE + DURATION);

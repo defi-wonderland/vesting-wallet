@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.0;
 
+import '@openzeppelin/contracts/utils/math/Math.sol';
 import '@openzeppelin/contracts/token/ERC20/IERC20.sol';
 import '@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol';
 import '@openzeppelin/contracts/utils/structs/EnumerableSet.sol';
@@ -12,8 +13,8 @@ contract VestingWallet is IVestingWallet, Governable {
   using EnumerableSet for EnumerableSet.AddressSet;
 
   mapping(address => uint256) public override totalAmountPerToken;
+  mapping(address => mapping(address => uint256)) internal _duration; // beneficiary => token => _duration
   mapping(address => mapping(address => uint256)) public override amount; // beneficiary => token => amount
-  mapping(address => mapping(address => uint256)) public override releaseDate; // beneficiary => token => releaseDate
   mapping(address => mapping(address => uint256)) public override startDate; // beneficiary => token => startDate
   mapping(address => mapping(address => uint256)) public override released; // beneficiary => token => released
 
@@ -24,6 +25,10 @@ contract VestingWallet is IVestingWallet, Governable {
 
   constructor(address _governance) Governable(_governance) {}
 
+  function releaseDate(address _beneficiary, address _token) public view override returns (uint256) {
+    return startDate[_beneficiary][_token] + _duration[_beneficiary][_token];
+  }
+
   function isBeneficiary(address _beneficiary) public view override returns (bool) {
     return _beneficiaries.contains(_beneficiary);
   }
@@ -31,7 +36,7 @@ contract VestingWallet is IVestingWallet, Governable {
   function addBenefit(
     address _beneficiary,
     uint256 _startDate,
-    uint256 _duration,
+    uint256 __duration,
     address _token,
     uint256 _amount
   ) public override onlyGovernance {
@@ -44,7 +49,7 @@ contract VestingWallet is IVestingWallet, Governable {
     }
 
     startDate[_beneficiary][_token] = _startDate;
-    releaseDate[_beneficiary][_token] = _startDate + _duration;
+    _duration[_beneficiary][_token] = __duration;
 
     uint256 pendingAmount = amount[_beneficiary][_token] - released[_beneficiary][_token];
     amount[_beneficiary][_token] = _amount + pendingAmount;
@@ -86,15 +91,13 @@ contract VestingWallet is IVestingWallet, Governable {
   function _releasableSchedule(address _beneficiary, address _token) internal view returns (uint256) {
     uint256 _timestamp = block.timestamp;
     uint256 _start = startDate[_beneficiary][_token];
-    uint256 _duration = releaseDate[_beneficiary][_token] - startDate[_beneficiary][_token];
+    uint256 __duration = _duration[_beneficiary][_token];
     uint256 _totalAllocation = amount[_beneficiary][_token];
 
     if (_timestamp < _start) {
       return 0;
-    } else if (_timestamp > _start + _duration) {
-      return _totalAllocation;
     } else {
-      return (_totalAllocation * (_timestamp - _start)) / _duration;
+      return Math.min(_totalAllocation, (_totalAllocation * (_timestamp - _start)) / __duration);
     }
   }
 

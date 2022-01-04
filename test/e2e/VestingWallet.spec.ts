@@ -7,7 +7,18 @@ import { evm, wallet } from '@utils';
 import { IERC20 } from '@typechained';
 import { getNodeUrl } from 'utils/network';
 import forkBlockNumber from './fork-block-numbers';
-import { DAI_ADDRESS, DAI_WHALE_ADDRESS, DURATION, EXPECTATION_DELTA, PARTIAL_DURATION, START_DATE, VEST_AMOUNT } from '@utils/constants';
+import {
+  DAI_ADDRESS,
+  DAI_WHALE_ADDRESS,
+  USDC_ADDRESS,
+  USDC_WHALE_ADDRESS,
+  DURATION,
+  EXPECTATION_DELTA,
+  PARTIAL_DURATION,
+  START_DATE,
+  VEST_AMOUNT,
+  VEST_AMOUNT_6_DECIMALS,
+} from '@utils/constants';
 import { when } from '@utils/bdd';
 
 const TOTAL_VEST_AMOUNT = VEST_AMOUNT.mul(2);
@@ -21,22 +32,22 @@ describe('VestingWallet @skip-on-coverage', () => {
   let vestingWalletFactory: VestingWallet__factory;
   let snapshotId: string;
   let dai: IERC20;
-  let usd: IERC20;
+  let usdc: IERC20;
 
   before(async () => {
-    [beneficiary, owner] = await ethers.getSigners();
+    [, beneficiary, owner] = await ethers.getSigners();
     await evm.reset({
       jsonRpcUrl: getNodeUrl('mainnet'),
       blockNumber: forkBlockNumber.dai,
     });
 
     dai = (await ethers.getContractAt('IERC20', DAI_ADDRESS)) as unknown as IERC20;
-    usd = (await ethers.getContractAt('IERC20', DAI_ADDRESS)) as unknown as IERC20;
+    usdc = (await ethers.getContractAt('IERC20', USDC_ADDRESS)) as unknown as IERC20;
     daiWhale = await wallet.impersonate(DAI_WHALE_ADDRESS);
-    usdWhale = await wallet.impersonate(DAI_WHALE_ADDRESS);
+    usdWhale = await wallet.impersonate(USDC_WHALE_ADDRESS);
 
     await dai.connect(daiWhale).transfer(owner.address, TOTAL_VEST_AMOUNT);
-    await usd.connect(usdWhale).transfer(owner.address, TOTAL_VEST_AMOUNT);
+    await usdc.connect(usdWhale).transfer(owner.address, VEST_AMOUNT_6_DECIMALS);
 
     vestingWalletFactory = (await ethers.getContractFactory('VestingWallet')) as VestingWallet__factory;
 
@@ -245,12 +256,12 @@ describe('VestingWallet @skip-on-coverage', () => {
 
   when('a provider creates USDC bond', () => {
     beforeEach(async () => {
-      await usd.connect(owner).approve(vestingWallet.address, VEST_AMOUNT);
-      await vestingWallet.connect(owner).addBenefit(beneficiary.address, START_DATE, DURATION, usd.address, VEST_AMOUNT);
+      await usdc.connect(owner).approve(vestingWallet.address, VEST_AMOUNT_6_DECIMALS);
+      await vestingWallet.connect(owner).addBenefit(beneficiary.address, START_DATE, DURATION, usdc.address, VEST_AMOUNT_6_DECIMALS);
     });
 
     it('should work', async () => {
-      expect(await vestingWallet.amount(beneficiary.address, usd.address)).to.eq(VEST_AMOUNT);
+      expect(await vestingWallet.amount(beneficiary.address, usdc.address)).to.eq(VEST_AMOUNT_6_DECIMALS);
     });
   });
 });
