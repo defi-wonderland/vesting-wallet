@@ -58,7 +58,7 @@ contract VestingWallet is IVestingWallet, Governable {
     }
 
     if (amount[_beneficiary][_token] != 0) {
-      release(_beneficiary, _token);
+      _release(_beneficiary, _token);
     }
 
     startDate[_beneficiary][_token] = _startDate;
@@ -94,7 +94,7 @@ contract VestingWallet is IVestingWallet, Governable {
   }
 
   function removeBenefit(address _beneficiary, address _token) external override onlyGovernance {
-    release(_beneficiary, _token);
+    _release(_beneficiary, _token);
 
     uint256 _transferToOwner = amount[_beneficiary][_token] - released[_beneficiary][_token];
 
@@ -109,8 +109,8 @@ contract VestingWallet is IVestingWallet, Governable {
     emit BenefitRemoved(_token, _beneficiary, _transferToOwner);
   }
 
-  function release(address _beneficiary, address _token) public override {
-    uint256 _releasable = releasableAmount(_beneficiary, _token);
+  function _release(address _beneficiary, address _token) internal {
+    uint256 _releasable = _releasableSchedule(_beneficiary, _token) - released[_beneficiary][_token];
 
     if (_releasable == 0) {
       return;
@@ -122,6 +122,17 @@ contract VestingWallet is IVestingWallet, Governable {
     SafeERC20.safeTransfer(IERC20(_token), _beneficiary, _releasable);
 
     emit BenefitReleased(_token, _beneficiary, _releasable);
+  }
+
+  function release(address _beneficiary, address _token) external override {
+    _release(_beneficiary, _token);
+  }
+
+  function release(address _beneficiary, address[] memory _tokens) external override {
+    uint256 _length = _tokens.length;
+    for (uint256 _i; _i < _length; _i++) {
+      _release(_beneficiary, _tokens[_i]);
+    }
   }
 
   function _releasableSchedule(address _beneficiary, address _token) internal view returns (uint256) {

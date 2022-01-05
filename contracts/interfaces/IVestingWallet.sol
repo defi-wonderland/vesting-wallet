@@ -37,6 +37,8 @@ interface IVestingWallet is IDustCollector {
 
   function release(address _beneficiary, address _token) external;
 
+  function release(address _beneficiary, address[] memory _tokens) external;
+
   function released(address _beneficiary, address _token) external returns (uint256);
 
   function releaseDate(address _beneficiary, address _token) external returns (uint256);

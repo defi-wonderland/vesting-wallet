@@ -82,7 +82,7 @@ describe('VestingWallet @skip-on-coverage', () => {
       await evm.advanceToTimeAndBlock(START_DATE + DURATION);
       const initialBalance = await dai.callStatic.balanceOf(beneficiary.address);
 
-      await vestingWallet.connect(beneficiary).release(beneficiary.address, dai.address);
+      await vestingWallet.connect(beneficiary)['release(address,address)'](beneficiary.address, dai.address);
 
       const finalBalance = await dai.callStatic.balanceOf(beneficiary.address);
 
@@ -93,7 +93,7 @@ describe('VestingWallet @skip-on-coverage', () => {
       await evm.advanceToTimeAndBlock(START_DATE + DURATION / 2);
       const initialBalance = await dai.callStatic.balanceOf(beneficiary.address);
 
-      await vestingWallet.connect(beneficiary).release(beneficiary.address, dai.address);
+      await vestingWallet.connect(beneficiary)['release(address,address)'](beneficiary.address, dai.address);
 
       const finalBalance = await dai.callStatic.balanceOf(beneficiary.address);
 
@@ -162,12 +162,12 @@ describe('VestingWallet @skip-on-coverage', () => {
       // call release after half bonded time
       await evm.advanceToTimeAndBlock(START_DATE + DURATION / 2);
       const initialBalance = await dai.callStatic.balanceOf(beneficiary.address);
-      await vestingWallet.connect(beneficiary).release(beneficiary.address, dai.address);
+      await vestingWallet.connect(beneficiary)['release(address,address)'](beneficiary.address, dai.address);
 
       // call release after another quarter of bonded time
       await evm.advanceToTimeAndBlock(START_DATE + (DURATION * 3) / 4);
       const stepBalance = await dai.callStatic.balanceOf(beneficiary.address);
-      await vestingWallet.connect(beneficiary).release(beneficiary.address, dai.address);
+      await vestingWallet.connect(beneficiary)['release(address,address)'](beneficiary.address, dai.address);
 
       const finalBalance = await dai.callStatic.balanceOf(beneficiary.address);
 
@@ -226,12 +226,12 @@ describe('VestingWallet @skip-on-coverage', () => {
     it('should success with a release between the two completed vest', async () => {
       await evm.advanceToTimeAndBlock(START_DATE + DURATION);
 
-      await vestingWallet.connect(owner).release(beneficiary.address, dai.address);
+      await vestingWallet.connect(owner)['release(address,address)'](beneficiary.address, dai.address);
       await vestingWallet.connect(owner).addBenefit(beneficiary.address, START_DATE + DURATION, DURATION, dai.address, VEST_AMOUNT);
 
       await evm.advanceToTimeAndBlock(START_DATE + 2 * DURATION);
 
-      await vestingWallet.connect(owner).release(beneficiary.address, dai.address);
+      await vestingWallet.connect(owner)['release(address,address)'](beneficiary.address, dai.address);
 
       const beneficiaryDaiBalance = await dai.callStatic.balanceOf(beneficiary.address);
       expect(beneficiaryDaiBalance).to.be.equal(TOTAL_VEST_AMOUNT);
@@ -241,13 +241,13 @@ describe('VestingWallet @skip-on-coverage', () => {
       const NEW_START_DATE = START_DATE + DURATION;
       const beneficiaryClaimableAmount = VEST_AMOUNT.mul(PARTIAL_DURATION).div(DURATION);
       await evm.advanceToTimeAndBlock(START_DATE + PARTIAL_DURATION);
-      await vestingWallet.connect(owner).release(beneficiary.address, dai.address);
+      await vestingWallet.connect(owner)['release(address,address)'](beneficiary.address, dai.address);
 
       await evm.advanceToTimeAndBlock(START_DATE + DURATION);
       await vestingWallet.connect(owner).addBenefit(beneficiary.address, NEW_START_DATE, DURATION, dai.address, VEST_AMOUNT);
 
       await evm.advanceToTimeAndBlock(NEW_START_DATE + PARTIAL_DURATION);
-      await vestingWallet.connect(owner).release(beneficiary.address, dai.address);
+      await vestingWallet.connect(owner)['release(address,address)'](beneficiary.address, dai.address);
 
       const beneficiaryDaiBalance = await dai.callStatic.balanceOf(beneficiary.address);
       expect(beneficiaryDaiBalance).to.be.closeTo(VEST_AMOUNT.add(beneficiaryClaimableAmount), EXPECTATION_DELTA);

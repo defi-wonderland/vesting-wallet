@@ -5,7 +5,7 @@ import { ethers } from 'hardhat';
 import { BigNumber, Transaction, ContractTransaction } from 'ethers';
 import { VestingWallet, VestingWallet__factory } from '@typechained';
 import { evm, wallet, behaviours } from '@utils';
-import { DAI_ADDRESS, DURATION, PARTIAL_DURATION, START_DATE, VEST_AMOUNT } from '@utils/constants';
+import { DAI_ADDRESS, USDC_ADDRESS, DURATION, PARTIAL_DURATION, START_DATE, VEST_AMOUNT } from '@utils/constants';
 import { FakeContract, MockContract, MockContractFactory, smock } from '@defi-wonderland/smock';
 import chai, { expect } from 'chai';
 
@@ -17,6 +17,7 @@ describe('VestingWallet', () => {
   let snapshotId: string;
   let owner: SignerWithAddress;
   let dai: FakeContract<IERC20>;
+  let usdc: FakeContract<IERC20>;
 
   const beneficiary = wallet.generateRandomAddress();
 
@@ -25,6 +26,7 @@ describe('VestingWallet', () => {
     vestingWalletFactory = await smock.mock<VestingWallet__factory>('VestingWallet');
     vestingWallet = await vestingWalletFactory.connect(owner).deploy(owner.address);
     dai = await smock.fake('ERC20', { address: DAI_ADDRESS });
+    usdc = await smock.fake('ERC20', { address: USDC_ADDRESS });
 
     snapshotId = await evm.snapshot.take();
   });
@@ -84,7 +86,7 @@ describe('VestingWallet', () => {
       dai.transfer.returns(true);
 
       await evm.advanceToTimeAndBlock(START_DATE + PARTIAL_DURATION);
-      await vestingWallet.release(beneficiary, DAI_ADDRESS);
+      await vestingWallet['release(address,address)'](beneficiary, DAI_ADDRESS);
       expect(await vestingWallet.releasableAmount(beneficiary, DAI_ADDRESS)).to.be.eq(0);
     });
   });
@@ -524,7 +526,7 @@ describe('VestingWallet', () => {
     });
   });
 
-  describe('release', () => {
+  describe('release(address,address)', () => {
     const DENOMINATOR = 3;
     let tx: Transaction;
 
@@ -556,14 +558,16 @@ describe('VestingWallet', () => {
       dai.transfer.reverts();
       await evm.advanceToTimeAndBlock(START_DATE + DURATION / DENOMINATOR);
 
-      await expect(vestingWallet.connect(owner).release(beneficiary, DAI_ADDRESS)).to.be.revertedWith('SafeERC20: low-level call failed');
+      await expect(vestingWallet.connect(owner)['release(address,address)'](beneficiary, DAI_ADDRESS)).to.be.revertedWith(
+        'SafeERC20: low-level call failed'
+      );
     });
 
     it('should revert if transfer does not succeed', async () => {
       dai.transfer.returns(false);
       await evm.advanceToTimeAndBlock(START_DATE + DURATION / DENOMINATOR);
 
-      await expect(vestingWallet.connect(owner).release(beneficiary, DAI_ADDRESS)).to.be.revertedWith(
+      await expect(vestingWallet.connect(owner)['release(address,address)'](beneficiary, DAI_ADDRESS)).to.be.revertedWith(
         'SafeERC20: ERC20 operation did not succeed'
       );
     });
@@ -574,12 +578,15 @@ describe('VestingWallet', () => {
       });
 
       it('should not do any transfer', async () => {
-        await vestingWallet.connect(owner).release(beneficiary, DAI_ADDRESS);
+        await vestingWallet.connect(owner)['release(address,address)'](beneficiary, DAI_ADDRESS);
         expect(dai.transfer).to.not.have.been.called;
       });
 
       it('should not emit the BenefitReleased event', async () => {
-        await expect(vestingWallet.connect(owner).release(beneficiary, DAI_ADDRESS)).to.not.emit(vestingWallet, 'BenefitReleased');
+        await expect(vestingWallet.connect(owner)['release(address,address)'](beneficiary, DAI_ADDRESS)).to.not.emit(
+          vestingWallet,
+          'BenefitReleased'
+        );
       });
     });
 
@@ -592,7 +599,7 @@ describe('VestingWallet', () => {
         dai.transfer.returns(true);
 
         await evm.advanceToTimeAndBlock(START_DATE + DURATION / DENOMINATOR);
-        tx = await vestingWallet.connect(owner).release(beneficiary, DAI_ADDRESS);
+        tx = await vestingWallet.connect(owner)['release(address,address)'](beneficiary, DAI_ADDRESS);
 
         // query latest block timestamp for precise calculation
         timestamp = (await ethers.provider.getBlock('latest')).timestamp;
@@ -615,7 +622,7 @@ describe('VestingWallet', () => {
         dai.transfer.returns(true);
 
         await evm.advanceToTimeAndBlock(START_DATE + DURATION);
-        tx = await vestingWallet.connect(owner).release(beneficiary, DAI_ADDRESS);
+        tx = await vestingWallet.connect(owner)['release(address,address)'](beneficiary, DAI_ADDRESS);
       });
 
       it('should transfer total ERC20 amount to beneficiary', async () => {
@@ -624,6 +631,158 @@ describe('VestingWallet', () => {
 
       it('should emit the BenefitReleased event', async () => {
         await expect(tx).to.emit(vestingWallet, 'BenefitReleased').withArgs(DAI_ADDRESS, beneficiary, VEST_AMOUNT);
+      });
+    });
+  });
+
+  describe('release(address,address[])', () => {
+    const DENOMINATOR = 3;
+    // setting a 2nd vest that starts before and ends at the same time
+    const START_DATE_USDC = START_DATE - DURATION;
+    const DURATION_USDC = DURATION * 2;
+    let tx: Transaction;
+
+    beforeEach(async () => {
+      await vestingWallet.setVariable('startDate', {
+        [beneficiary]: {
+          [DAI_ADDRESS]: START_DATE,
+          [USDC_ADDRESS]: START_DATE_USDC,
+        },
+      });
+      await vestingWallet.setVariable('_duration', {
+        [beneficiary]: {
+          [DAI_ADDRESS]: DURATION,
+          [USDC_ADDRESS]: DURATION_USDC,
+        },
+      });
+      await vestingWallet.setVariable('amount', {
+        [beneficiary]: {
+          [DAI_ADDRESS]: VEST_AMOUNT,
+          [USDC_ADDRESS]: VEST_AMOUNT,
+        },
+      });
+      await vestingWallet.setVariable('totalAmountPerToken', {
+        [DAI_ADDRESS]: VEST_AMOUNT,
+        [USDC_ADDRESS]: VEST_AMOUNT,
+      });
+    });
+
+    it('should revert if one transfer fails', async () => {
+      dai.transfer.reverts();
+      await evm.advanceToTimeAndBlock(START_DATE + DURATION / DENOMINATOR);
+
+      await expect(vestingWallet.connect(owner)['release(address,address[])'](beneficiary, [DAI_ADDRESS, USDC_ADDRESS])).to.be.revertedWith(
+        'SafeERC20: low-level call failed'
+      );
+    });
+
+    it('should revert if one transfer does not succeed', async () => {
+      dai.transfer.returns(false);
+      await evm.advanceToTimeAndBlock(START_DATE + DURATION / DENOMINATOR);
+
+      await expect(vestingWallet.connect(owner)['release(address,address[])'](beneficiary, [DAI_ADDRESS, USDC_ADDRESS])).to.be.revertedWith(
+        'SafeERC20: ERC20 operation did not succeed'
+      );
+    });
+
+    context('when none of the vesting periods has yet started', () => {
+      beforeEach(async () => {
+        await evm.advanceToTime(START_DATE - DURATION);
+      });
+
+      it('should not do any transfer', async () => {
+        await vestingWallet.connect(owner)['release(address,address[])'](beneficiary, [DAI_ADDRESS, USDC_ADDRESS]);
+        expect(dai.transfer).to.not.have.been.called;
+        expect(usdc.transfer).to.not.have.been.called;
+      });
+
+      it('should not emit the BenefitReleased event', async () => {
+        await expect(vestingWallet.connect(owner)['release(address,address[])'](beneficiary, [DAI_ADDRESS, USDC_ADDRESS])).to.not.emit(
+          vestingWallet,
+          'BenefitReleased'
+        );
+      });
+    });
+
+    context('when one of vesting period is ongoing', () => {
+      let timestamp: number;
+      let partialDurationUsdc: number;
+      let partialReleasedUsdc: BigNumber;
+
+      beforeEach(async () => {
+        usdc.transfer.returns(true);
+
+        await evm.advanceToTimeAndBlock(START_DATE - 1);
+        tx = await vestingWallet.connect(owner)['release(address,address[])'](beneficiary, [DAI_ADDRESS, USDC_ADDRESS]);
+
+        // query latest block timestamp for precise calculation
+        timestamp = (await ethers.provider.getBlock('latest')).timestamp;
+        partialDurationUsdc = timestamp - START_DATE_USDC;
+
+        partialReleasedUsdc = VEST_AMOUNT.mul(partialDurationUsdc).div(DURATION_USDC);
+      });
+
+      it('should transfer releaseable ERC20 amount to beneficiary', async () => {
+        expect(dai.transfer).not.to.have.been.called;
+        expect(usdc.transfer).to.have.been.calledWith(beneficiary, partialReleasedUsdc);
+      });
+
+      it('should emit one BenefitReleased event', async () => {
+        await expect(tx).to.emit(vestingWallet, 'BenefitReleased').withArgs(USDC_ADDRESS, beneficiary, partialReleasedUsdc);
+      });
+    });
+
+    context('when both of vesting period are ongoing', () => {
+      let timestamp: number;
+      let partialDurationDai: number;
+      let partialDurationUsdc: number;
+      let partialReleasedDai: BigNumber;
+      let partialReleasedUsdc: BigNumber;
+
+      beforeEach(async () => {
+        dai.transfer.returns(true);
+        usdc.transfer.returns(true);
+
+        await evm.advanceToTimeAndBlock(START_DATE + DURATION / DENOMINATOR);
+        tx = await vestingWallet.connect(owner)['release(address,address[])'](beneficiary, [DAI_ADDRESS, USDC_ADDRESS]);
+
+        // query latest block timestamp for precise calculation
+        timestamp = (await ethers.provider.getBlock('latest')).timestamp;
+        partialDurationDai = timestamp - START_DATE;
+        partialDurationUsdc = timestamp - START_DATE_USDC;
+
+        partialReleasedDai = VEST_AMOUNT.mul(partialDurationDai).div(DURATION);
+        partialReleasedUsdc = VEST_AMOUNT.mul(partialDurationUsdc).div(DURATION_USDC);
+      });
+
+      it('should transfer both releaseable ERC20 amounts to beneficiary', async () => {
+        expect(dai.transfer).to.have.been.calledWith(beneficiary, partialReleasedDai);
+        expect(usdc.transfer).to.have.been.calledWith(beneficiary, partialReleasedUsdc);
+      });
+
+      it('should emit both BenefitReleased events', async () => {
+        await expect(tx).to.emit(vestingWallet, 'BenefitReleased').withArgs(DAI_ADDRESS, beneficiary, partialReleasedDai);
+        await expect(tx).to.emit(vestingWallet, 'BenefitReleased').withArgs(USDC_ADDRESS, beneficiary, partialReleasedUsdc);
+      });
+    });
+
+    context('when vesting periods have ended', () => {
+      beforeEach(async () => {
+        dai.transfer.returns(true);
+        usdc.transfer.returns(true);
+
+        await evm.advanceToTimeAndBlock(START_DATE + DURATION);
+        tx = await vestingWallet.connect(owner)['release(address,address[])'](beneficiary, [DAI_ADDRESS, USDC_ADDRESS]);
+      });
+
+      it('should transfer both total ERC20 amounts to beneficiary', async () => {
+        expect(dai.transfer).to.have.been.calledWith(beneficiary, VEST_AMOUNT);
+        expect(usdc.transfer).to.have.been.calledWith(beneficiary, VEST_AMOUNT);
+      });
+
+      it('should emit both BenefitReleased events', async () => {
+        await expect(tx).to.emit(vestingWallet, 'BenefitReleased').withArgs(DAI_ADDRESS, beneficiary, VEST_AMOUNT);
+        await expect(tx).to.emit(vestingWallet, 'BenefitReleased').withArgs(USDC_ADDRESS, beneficiary, VEST_AMOUNT);
       });
     });
   });
