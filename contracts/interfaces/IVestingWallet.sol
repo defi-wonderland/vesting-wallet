@@ -30,6 +30,14 @@ interface IVestingWallet is IDustCollector {
       uint256 released
     );
 
+  function releaseDate(address _token, address _beneficiary) external returns (uint256);
+
+  function releasableAmount(address _token, address _beneficiary) external view returns (uint256);
+
+  function isBeneficiary(address _beneficiary) external view returns (bool);
+
+  function totalAmountPerToken(address _token) external returns (uint256);
+
   // methods
   function addBenefit(
     address _beneficiary,
@@ -47,17 +55,9 @@ interface IVestingWallet is IDustCollector {
     uint256 _duration
   ) external;
 
-  function isBeneficiary(address _beneficiary) external view returns (bool);
+  function removeBenefit(address _token, address _beneficiary) external;
 
-  function releasableAmount(address _beneficiary, address _token) external view returns (uint256);
+  function release(address _token, address _beneficiary) external;
 
-  function release(address _beneficiary, address _token) external;
-
-  function release(address _beneficiary, address[] memory _tokens) external;
-
-  function releaseDate(address _beneficiary, address _token) external returns (uint256);
-
-  function removeBenefit(address _beneficiary, address _token) external;
-
-  function totalAmountPerToken(address _token) external returns (uint256);
+  function release(address[] memory _tokens, address _beneficiary) external;
 }
