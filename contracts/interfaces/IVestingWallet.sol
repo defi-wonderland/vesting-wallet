@@ -12,6 +12,24 @@ interface IVestingWallet is IDustCollector {
   event BenefitRemoved(address indexed token, address indexed beneficiary, uint256 removedAmount);
   event BenefitReleased(address indexed token, address indexed beneficiary, uint256 releasedAmount);
 
+  // structs
+  struct Benefit {
+    uint256 amount;
+    uint256 startDate;
+    uint256 duration;
+    uint256 released;
+  }
+
+  // views
+  function benefits(address beneficiary, address token)
+    external
+    returns (
+      uint256 amount,
+      uint256 startDate,
+      uint256 duration,
+      uint256 released
+    );
+
   // methods
   function addBenefit(
     address _beneficiary,
@@ -29,8 +47,6 @@ interface IVestingWallet is IDustCollector {
     uint256 _duration
   ) external;
 
-  function amount(address _beneficiary, address _token) external returns (uint256);
-
   function isBeneficiary(address _beneficiary) external view returns (bool);
 
   function releasableAmount(address _beneficiary, address _token) external view returns (uint256);
@@ -39,13 +55,9 @@ interface IVestingWallet is IDustCollector {
 
   function release(address _beneficiary, address[] memory _tokens) external;
 
-  function released(address _beneficiary, address _token) external returns (uint256);
-
   function releaseDate(address _beneficiary, address _token) external returns (uint256);
 
   function removeBenefit(address _beneficiary, address _token) external;
-
-  function startDate(address _beneficiary, address _token) external returns (uint256);
 
   function totalAmountPerToken(address _token) external returns (uint256);
 }

@@ -261,7 +261,7 @@ describe('VestingWallet @skip-on-coverage', () => {
     });
 
     it('should work', async () => {
-      expect(await vestingWallet.amount(beneficiary.address, usdc.address)).to.eq(VEST_AMOUNT_6_DECIMALS);
+      expect((await vestingWallet.benefits(usdc.address, beneficiary.address)).amount).to.eq(VEST_AMOUNT_6_DECIMALS);
     });
   });
 });

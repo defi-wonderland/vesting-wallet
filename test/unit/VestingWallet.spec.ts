@@ -2,7 +2,7 @@ import { IERC20 } from '@typechained';
 import { toUnit } from '@utils/bn';
 import { SignerWithAddress } from '@nomiclabs/hardhat-ethers/dist/src/signers';
 import { ethers } from 'hardhat';
-import { BigNumber, Transaction, ContractTransaction } from 'ethers';
+import { BigNumber, Transaction } from 'ethers';
 import { VestingWallet, VestingWallet__factory } from '@typechained';
 import { evm, wallet, behaviours } from '@utils';
 import { DAI_ADDRESS, USDC_ADDRESS, DURATION, PARTIAL_DURATION, START_DATE, VEST_AMOUNT } from '@utils/constants';
@@ -44,21 +44,13 @@ describe('VestingWallet', () => {
 
   describe('releasableAmount', () => {
     beforeEach(async () => {
-      await vestingWallet.setVariable('startDate', {
-        [beneficiary]: {
-          [DAI_ADDRESS]: START_DATE,
-        },
-      });
-
-      await vestingWallet.setVariable('_duration', {
-        [beneficiary]: {
-          [DAI_ADDRESS]: DURATION,
-        },
-      });
-
-      await vestingWallet.setVariable('amount', {
-        [beneficiary]: {
-          [DAI_ADDRESS]: VEST_AMOUNT,
+      await vestingWallet.setVariable('benefits', {
+        [DAI_ADDRESS]: {
+          [beneficiary]: {
+            ['amount']: VEST_AMOUNT,
+            ['startDate']: START_DATE,
+            ['duration']: DURATION,
+          },
         },
       });
 
@@ -125,7 +117,7 @@ describe('VestingWallet', () => {
       });
 
       it('should update amount', async () => {
-        expect(await vestingWallet.callStatic.amount(beneficiary, DAI_ADDRESS)).to.equal(VEST_AMOUNT);
+        expect((await vestingWallet.callStatic.benefits(DAI_ADDRESS, beneficiary)).amount).to.equal(VEST_AMOUNT);
       });
 
       it('should update releaseDate', async () => {
@@ -133,7 +125,7 @@ describe('VestingWallet', () => {
       });
 
       it('should update startDate', async () => {
-        expect(await vestingWallet.callStatic.startDate(beneficiary, DAI_ADDRESS)).to.equal(START_DATE);
+        expect((await vestingWallet.callStatic.benefits(DAI_ADDRESS, beneficiary)).startDate).to.equal(START_DATE);
       });
 
       // TODO: add events on other contexts
@@ -149,21 +141,13 @@ describe('VestingWallet', () => {
         dai.transfer.returns(true);
         dai.transferFrom.returns(true);
 
-        await vestingWallet.setVariable('startDate', {
-          [beneficiary]: {
-            [DAI_ADDRESS]: START_DATE,
-          },
-        });
-
-        await vestingWallet.setVariable('_duration', {
-          [beneficiary]: {
-            [DAI_ADDRESS]: DURATION,
-          },
-        });
-
-        await vestingWallet.setVariable('amount', {
-          [beneficiary]: {
-            [DAI_ADDRESS]: VEST_AMOUNT,
+        await vestingWallet.setVariable('benefits', {
+          [DAI_ADDRESS]: {
+            [beneficiary]: {
+              ['amount']: VEST_AMOUNT,
+              ['startDate']: START_DATE,
+              ['duration']: DURATION,
+            },
           },
         });
 
@@ -175,7 +159,7 @@ describe('VestingWallet', () => {
       it('should overwrite start date', async () => {
         await vestingWallet.connect(owner).addBenefit(beneficiary, NEW_START_DATE, DURATION, DAI_ADDRESS, VEST_AMOUNT);
 
-        expect(await vestingWallet.startDate(beneficiary, DAI_ADDRESS)).to.eq(NEW_START_DATE);
+        expect((await vestingWallet.benefits(DAI_ADDRESS, beneficiary)).startDate).to.eq(NEW_START_DATE);
       });
 
       it('should overwrite release date', async () => {
@@ -188,7 +172,7 @@ describe('VestingWallet', () => {
         it('should add previous amount to new benefit', async () => {
           await vestingWallet.connect(owner).addBenefit(beneficiary, NEW_START_DATE, DURATION, DAI_ADDRESS, VEST_AMOUNT);
 
-          expect(await vestingWallet.amount(beneficiary, DAI_ADDRESS)).to.eq(VEST_AMOUNT.mul(2));
+          expect((await vestingWallet.benefits(DAI_ADDRESS, beneficiary)).amount).to.eq(VEST_AMOUNT.mul(2));
         });
       });
 
@@ -212,7 +196,7 @@ describe('VestingWallet', () => {
         });
 
         it('should add remaining amount to new benefit', async () => {
-          expect(await vestingWallet.amount(beneficiary, DAI_ADDRESS)).to.eq(VEST_AMOUNT.add(VEST_AMOUNT.sub(partialBenefit)));
+          expect((await vestingWallet.benefits(DAI_ADDRESS, beneficiary)).amount).to.eq(VEST_AMOUNT.add(VEST_AMOUNT.sub(partialBenefit)));
         });
       });
 
@@ -227,7 +211,7 @@ describe('VestingWallet', () => {
         });
 
         it('should not add any amount to new benefit', async () => {
-          expect(await vestingWallet.amount(beneficiary, DAI_ADDRESS)).to.eq(VEST_AMOUNT);
+          expect((await vestingWallet.benefits(DAI_ADDRESS, beneficiary)).amount).to.eq(VEST_AMOUNT);
         });
       });
     });
@@ -266,8 +250,8 @@ describe('VestingWallet', () => {
       });
 
       it('should update amounts', async () => {
-        expect(await vestingWallet.callStatic.amount(beneficiary1, DAI_ADDRESS)).to.equal(amount1);
-        expect(await vestingWallet.callStatic.amount(beneficiary2, DAI_ADDRESS)).to.equal(amount2);
+        expect((await vestingWallet.callStatic.benefits(DAI_ADDRESS, beneficiary1)).amount).to.equal(amount1);
+        expect((await vestingWallet.callStatic.benefits(DAI_ADDRESS, beneficiary2)).amount).to.equal(amount2);
       });
 
       it('should update releaseDates', async () => {
@@ -276,8 +260,8 @@ describe('VestingWallet', () => {
       });
 
       it('should update startDates', async () => {
-        expect(await vestingWallet.callStatic.startDate(beneficiary1, DAI_ADDRESS)).to.equal(START_DATE);
-        expect(await vestingWallet.callStatic.startDate(beneficiary2, DAI_ADDRESS)).to.equal(START_DATE);
+        expect((await vestingWallet.callStatic.benefits(DAI_ADDRESS, beneficiary1)).startDate).to.equal(START_DATE);
+        expect((await vestingWallet.callStatic.benefits(DAI_ADDRESS, beneficiary2)).startDate).to.equal(START_DATE);
       });
 
       // TODO: add events on other contexts
@@ -294,21 +278,13 @@ describe('VestingWallet', () => {
         dai.transfer.returns(true);
         dai.transferFrom.returns(true);
 
-        await vestingWallet.setVariable('startDate', {
-          [beneficiary1]: {
-            [DAI_ADDRESS]: START_DATE,
-          },
-        });
-
-        await vestingWallet.setVariable('_duration', {
-          [beneficiary1]: {
-            [DAI_ADDRESS]: DURATION,
-          },
-        });
-
-        await vestingWallet.setVariable('amount', {
-          [beneficiary1]: {
-            [DAI_ADDRESS]: VEST_AMOUNT,
+        await vestingWallet.setVariable('benefits', {
+          [DAI_ADDRESS]: {
+            [beneficiary1]: {
+              ['amount']: VEST_AMOUNT,
+              ['startDate']: START_DATE,
+              ['duration']: DURATION,
+            },
           },
         });
 
@@ -320,7 +296,7 @@ describe('VestingWallet', () => {
       it('should overwrite start date', async () => {
         await vestingWallet.connect(owner).addBenefits(DAI_ADDRESS, [beneficiary1, beneficiary2], [amount1, amount2], NEW_START_DATE, DURATION);
 
-        expect(await vestingWallet.startDate(beneficiary1, DAI_ADDRESS)).to.eq(NEW_START_DATE);
+        expect((await vestingWallet.benefits(DAI_ADDRESS, beneficiary1)).startDate).to.eq(NEW_START_DATE);
       });
 
       it('should overwrite release date', async () => {
@@ -335,7 +311,7 @@ describe('VestingWallet', () => {
             .connect(owner)
             .addBenefits(DAI_ADDRESS, [beneficiary1, beneficiary2], [amount1, amount2], NEW_START_DATE, DURATION);
 
-          expect(await vestingWallet.amount(beneficiary1, DAI_ADDRESS)).to.eq(VEST_AMOUNT.add(amount1));
+          expect((await vestingWallet.benefits(DAI_ADDRESS, beneficiary1)).amount).to.eq(VEST_AMOUNT.add(amount1));
         });
       });
 
@@ -363,7 +339,7 @@ describe('VestingWallet', () => {
 
         it('should add remaining amount to new benefit', async () => {
           const expectedAmount = VEST_AMOUNT.sub(partialBenefit).add(amount1);
-          expect(await vestingWallet.amount(beneficiary1, DAI_ADDRESS)).to.eq(expectedAmount);
+          expect((await vestingWallet.benefits(DAI_ADDRESS, beneficiary1)).amount).to.eq(expectedAmount);
         });
       });
 
@@ -380,7 +356,7 @@ describe('VestingWallet', () => {
         });
 
         it('should not add any amount to new benefit', async () => {
-          expect(await vestingWallet.amount(beneficiary1, DAI_ADDRESS)).to.eq(amount1);
+          expect((await vestingWallet.benefits(DAI_ADDRESS, beneficiary1)).amount).to.eq(amount1);
         });
       });
     });
@@ -395,21 +371,13 @@ describe('VestingWallet', () => {
     );
 
     beforeEach(async () => {
-      await vestingWallet.setVariable('startDate', {
-        [beneficiary]: {
-          [DAI_ADDRESS]: START_DATE,
-        },
-      });
-
-      await vestingWallet.setVariable('_duration', {
-        [beneficiary]: {
-          [DAI_ADDRESS]: DURATION,
-        },
-      });
-
-      await vestingWallet.setVariable('amount', {
-        [beneficiary]: {
-          [DAI_ADDRESS]: VEST_AMOUNT,
+      await vestingWallet.setVariable('benefits', {
+        [DAI_ADDRESS]: {
+          [beneficiary]: {
+            ['amount']: VEST_AMOUNT,
+            ['startDate']: START_DATE,
+            ['duration']: DURATION,
+          },
         },
       });
 
@@ -531,21 +499,13 @@ describe('VestingWallet', () => {
     let tx: Transaction;
 
     beforeEach(async () => {
-      await vestingWallet.setVariable('startDate', {
-        [beneficiary]: {
-          [DAI_ADDRESS]: START_DATE,
-        },
-      });
-
-      await vestingWallet.setVariable('_duration', {
-        [beneficiary]: {
-          [DAI_ADDRESS]: DURATION,
-        },
-      });
-
-      await vestingWallet.setVariable('amount', {
-        [beneficiary]: {
-          [DAI_ADDRESS]: VEST_AMOUNT,
+      await vestingWallet.setVariable('benefits', {
+        [DAI_ADDRESS]: {
+          [beneficiary]: {
+            ['amount']: VEST_AMOUNT,
+            ['startDate']: START_DATE,
+            ['duration']: DURATION,
+          },
         },
       });
 
@@ -643,24 +603,23 @@ describe('VestingWallet', () => {
     let tx: Transaction;
 
     beforeEach(async () => {
-      await vestingWallet.setVariable('startDate', {
-        [beneficiary]: {
-          [DAI_ADDRESS]: START_DATE,
-          [USDC_ADDRESS]: START_DATE_USDC,
+      await vestingWallet.setVariable('benefits', {
+        [DAI_ADDRESS]: {
+          [beneficiary]: {
+            ['amount']: VEST_AMOUNT,
+            ['startDate']: START_DATE,
+            ['duration']: DURATION,
+          },
+        },
+        [USDC_ADDRESS]: {
+          [beneficiary]: {
+            ['amount']: VEST_AMOUNT,
+            ['startDate']: START_DATE_USDC,
+            ['duration']: DURATION_USDC,
+          },
         },
       });
-      await vestingWallet.setVariable('_duration', {
-        [beneficiary]: {
-          [DAI_ADDRESS]: DURATION,
-          [USDC_ADDRESS]: DURATION_USDC,
-        },
-      });
-      await vestingWallet.setVariable('amount', {
-        [beneficiary]: {
-          [DAI_ADDRESS]: VEST_AMOUNT,
-          [USDC_ADDRESS]: VEST_AMOUNT,
-        },
-      });
+
       await vestingWallet.setVariable('totalAmountPerToken', {
         [DAI_ADDRESS]: VEST_AMOUNT,
         [USDC_ADDRESS]: VEST_AMOUNT,
