@@ -1,9 +1,8 @@
-import { IERC20 } from '@typechained';
 import { toUnit } from '@utils/bn';
 import { SignerWithAddress } from '@nomiclabs/hardhat-ethers/dist/src/signers';
 import { ethers } from 'hardhat';
 import { BigNumber, Transaction } from 'ethers';
-import { VestingWallet, VestingWallet__factory } from '@typechained';
+import { IERC20, VestingWalletForTest, VestingWalletForTest__factory } from '@typechained';
 import { evm, wallet, behaviours } from '@utils';
 import { DAI_ADDRESS, USDC_ADDRESS, DURATION, PARTIAL_DURATION, START_DATE, VEST_AMOUNT } from '@utils/constants';
 import { FakeContract, MockContract, MockContractFactory, smock } from '@defi-wonderland/smock';
@@ -12,18 +11,19 @@ import chai, { expect } from 'chai';
 chai.use(smock.matchers);
 
 describe('VestingWallet', () => {
-  let vestingWallet: MockContract<VestingWallet>;
-  let vestingWalletFactory: MockContractFactory<VestingWallet__factory>;
+  let vestingWallet: MockContract<VestingWalletForTest>;
+  let vestingWalletFactory: MockContractFactory<VestingWalletForTest__factory>;
   let snapshotId: string;
   let owner: SignerWithAddress;
   let dai: FakeContract<IERC20>;
   let usdc: FakeContract<IERC20>;
 
   const beneficiary = wallet.generateRandomAddress();
+  const anotherBeneficiary = wallet.generateRandomAddress();
 
   before(async () => {
     [, owner] = await ethers.getSigners();
-    vestingWalletFactory = await smock.mock<VestingWallet__factory>('VestingWallet');
+    vestingWalletFactory = await smock.mock<VestingWalletForTest__factory>('VestingWalletForTest');
     vestingWallet = await vestingWalletFactory.connect(owner).deploy(owner.address);
     dai = await smock.fake('ERC20', { address: DAI_ADDRESS });
     usdc = await smock.fake('ERC20', { address: USDC_ADDRESS });
@@ -93,14 +93,23 @@ describe('VestingWallet', () => {
       [beneficiary, START_DATE, DURATION, DAI_ADDRESS, VEST_AMOUNT]
     );
 
-    it('should register the beneficiary if did not exist previously', async () => {
-      expect(await vestingWallet.callStatic.isBeneficiary(beneficiary)).to.be.false;
+    context('when the beneficiary and the token are not registered yet', () => {
+      beforeEach(async () => {
+        dai.transferFrom.returns(true);
+        await vestingWallet.connect(owner).addBenefit(beneficiary, START_DATE, DURATION, DAI_ADDRESS, VEST_AMOUNT);
+      });
 
-      dai.transferFrom.returns(true);
+      it('should register the beneficiary', async () => {
+        expect(await vestingWallet.callStatic.getBeneficiaries()).to.include(beneficiary);
+      });
 
-      await vestingWallet.connect(owner).addBenefit(beneficiary, START_DATE, DURATION, DAI_ADDRESS, VEST_AMOUNT);
+      it('should register the token', async () => {
+        expect(await vestingWallet.callStatic.getTokens()).to.include(DAI_ADDRESS);
+      });
 
-      expect(await vestingWallet.callStatic.isBeneficiary(beneficiary)).to.be.true;
+      it('should add the token to the beneficiary list of tokens', async () => {
+        expect(await vestingWallet.callStatic.getTokensOf(beneficiary)).to.include(DAI_ADDRESS);
+      });
     });
 
     context('when there was no previous benefit', () => {
@@ -122,6 +131,10 @@ describe('VestingWallet', () => {
 
       it('should update releaseDate', async () => {
         expect(await vestingWallet.callStatic.releaseDate(DAI_ADDRESS, beneficiary)).to.equal(RELEASE_DATE);
+      });
+
+      it('should update startDate', async () => {
+        expect((await vestingWallet.callStatic.benefits(DAI_ADDRESS, beneficiary)).startDate).to.equal(START_DATE);
       });
 
       it('should update startDate', async () => {
@@ -231,6 +244,26 @@ describe('VestingWallet', () => {
       () => [owner.address],
       [DAI_ADDRESS, [beneficiary1, beneficiary2], [amount1, amount2], START_DATE, DURATION]
     );
+
+    context('when the beneficiary and the token are not registered yet', () => {
+      beforeEach(async () => {
+        dai.transferFrom.returns(true);
+        await vestingWallet.connect(owner).addBenefits(DAI_ADDRESS, [beneficiary1, beneficiary2], [amount1, amount2], START_DATE, DURATION);
+      });
+
+      it('should register the beneficiaries', async () => {
+        expect(await vestingWallet.callStatic.getBeneficiaries()).to.include(beneficiary1, beneficiary2);
+      });
+
+      it('should register the token', async () => {
+        expect(await vestingWallet.callStatic.getTokens()).to.include(DAI_ADDRESS);
+      });
+
+      it('should add the token to the beneficiaries list of tokens', async () => {
+        expect(await vestingWallet.callStatic.getTokensOf(beneficiary1)).to.include(DAI_ADDRESS);
+        expect(await vestingWallet.callStatic.getTokensOf(beneficiary2)).to.include(DAI_ADDRESS);
+      });
+    });
 
     context('when there was no previous benefit', () => {
       let tx: Transaction;
@@ -384,6 +417,12 @@ describe('VestingWallet', () => {
       await vestingWallet.setVariable('totalAmountPerToken', {
         [DAI_ADDRESS]: VEST_AMOUNT,
       });
+
+      await vestingWallet.addBeneficiaryForTest(beneficiary);
+
+      await vestingWallet.addTokenForTest(DAI_ADDRESS);
+
+      await vestingWallet.addTokenToBeneficiaryForTest(DAI_ADDRESS, beneficiary);
     });
 
     it('should revert if transfer fails', async () => {
@@ -455,6 +494,22 @@ describe('VestingWallet', () => {
       it('should transfer total ERC20 amount to beneficiary', async () => {
         expect(dai.transfer).to.have.been.calledWith(beneficiary, VEST_AMOUNT);
       });
+
+      it('should delete the benefit', async () => {
+        expect((await vestingWallet.callStatic.benefits(DAI_ADDRESS, beneficiary)).startDate).to.be.equal(0);
+      });
+
+      it('should remove the beneficiary from the beneficiaries list', async () => {
+        expect(await vestingWallet.callStatic.getBeneficiaries()).to.not.include(beneficiary);
+      });
+
+      it('should remove the token from beneficiary token list', async () => {
+        expect(await vestingWallet.callStatic.getTokensOf(beneficiary)).to.not.include(DAI_ADDRESS);
+      });
+
+      it('should remove the token if it has not more beneficiaries', async () => {
+        expect(await vestingWallet.callStatic.getTokens()).to.not.include(DAI_ADDRESS);
+      });
     });
   });
 
@@ -510,8 +565,15 @@ describe('VestingWallet', () => {
       });
 
       await vestingWallet.setVariable('totalAmountPerToken', {
-        [DAI_ADDRESS]: VEST_AMOUNT,
+        [DAI_ADDRESS]: VEST_AMOUNT.mul(2), // one by each beneficiary
       });
+
+      await vestingWallet.addBeneficiaryForTest(beneficiary);
+
+      await vestingWallet.addTokenForTest(DAI_ADDRESS);
+
+      await vestingWallet.addTokenToBeneficiaryForTest(DAI_ADDRESS, beneficiary);
+      await vestingWallet.addTokenToBeneficiaryForTest(DAI_ADDRESS, anotherBeneficiary);
     });
 
     it('should revert if transfer fails', async () => {
@@ -592,6 +654,26 @@ describe('VestingWallet', () => {
       it('should emit the BenefitReleased event', async () => {
         await expect(tx).to.emit(vestingWallet, 'BenefitReleased').withArgs(DAI_ADDRESS, beneficiary, VEST_AMOUNT);
       });
+
+      it('should delete the benefit', async () => {
+        expect((await vestingWallet.callStatic.benefits(DAI_ADDRESS, beneficiary)).startDate).to.be.equal(0);
+      });
+
+      it('should remove the beneficiary from the beneficiaries list', async () => {
+        expect(await vestingWallet.callStatic.getBeneficiaries()).to.not.include(beneficiary);
+      });
+
+      it("should remove the token from beneficiary token's list", async () => {
+        expect(await vestingWallet.callStatic.getTokensOf(beneficiary)).to.not.include(DAI_ADDRESS);
+      });
+
+      it("should keep the token in others beneficiaries token's list", async () => {
+        expect(await vestingWallet.callStatic.getTokensOf(anotherBeneficiary)).to.include(DAI_ADDRESS);
+      });
+
+      it('should not remove the token if there is another beneficiary using it', async () => {
+        expect(await vestingWallet.callStatic.getTokens()).to.include(DAI_ADDRESS);
+      });
     });
   });
 
@@ -624,6 +706,12 @@ describe('VestingWallet', () => {
         [DAI_ADDRESS]: VEST_AMOUNT,
         [USDC_ADDRESS]: VEST_AMOUNT,
       });
+
+      await vestingWallet.addBeneficiaryForTest(beneficiary);
+
+      await vestingWallet.addTokenForTest(DAI_ADDRESS);
+
+      await vestingWallet.addTokenToBeneficiaryForTest(DAI_ADDRESS, beneficiary);
     });
 
     it('should revert if one transfer fails', async () => {
@@ -742,6 +830,22 @@ describe('VestingWallet', () => {
       it('should emit both BenefitReleased events', async () => {
         await expect(tx).to.emit(vestingWallet, 'BenefitReleased').withArgs(DAI_ADDRESS, beneficiary, VEST_AMOUNT);
         await expect(tx).to.emit(vestingWallet, 'BenefitReleased').withArgs(USDC_ADDRESS, beneficiary, VEST_AMOUNT);
+      });
+
+      it('should delete the benefit', async () => {
+        expect((await vestingWallet.callStatic.benefits(DAI_ADDRESS, beneficiary)).startDate).to.be.equal(0);
+      });
+
+      it('should remove the beneficiary from the beneficiaries list', async () => {
+        expect(await vestingWallet.callStatic.getBeneficiaries()).to.not.include(beneficiary);
+      });
+
+      it('should remove the token from beneficiary token list', async () => {
+        expect(await vestingWallet.callStatic.getTokensOf(beneficiary)).to.not.include(DAI_ADDRESS);
+      });
+
+      it('should remove the token if it has not more beneficiaries', async () => {
+        expect(await vestingWallet.callStatic.getTokens()).to.not.include(DAI_ADDRESS);
       });
     });
   });

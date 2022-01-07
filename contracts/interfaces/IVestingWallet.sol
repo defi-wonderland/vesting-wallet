@@ -21,6 +21,12 @@ interface IVestingWallet is IDustCollector {
   }
 
   // views
+  function getBeneficiaries() external view returns (address[] memory);
+
+  function getTokens() external view returns (address[] memory);
+
+  function getTokensOf(address _beneficiary) external view returns (address[] memory);
+
   function benefits(address beneficiary, address token)
     external
     returns (
@@ -33,8 +39,6 @@ interface IVestingWallet is IDustCollector {
   function releaseDate(address _token, address _beneficiary) external returns (uint256);
 
   function releasableAmount(address _token, address _beneficiary) external view returns (uint256);
-
-  function isBeneficiary(address _beneficiary) external view returns (bool);
 
   function totalAmountPerToken(address _token) external returns (uint256);
 

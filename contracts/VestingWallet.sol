@@ -12,14 +12,14 @@ contract VestingWallet is IVestingWallet, Governable {
   using SafeERC20 for IERC20;
   using EnumerableSet for EnumerableSet.AddressSet;
 
-  mapping(address => uint256) public override totalAmountPerToken;
-
-  mapping(address => mapping(address => Benefit)) public override benefits;
-
-  // TODO: create a getter for beneficiaries
+  EnumerableSet.AddressSet internal _vestedTokens;
   EnumerableSet.AddressSet internal _beneficiaries;
-
-  // TODO: create an AddressSet for tokens
+  // token => amount
+  mapping(address => uint256) public override totalAmountPerToken;
+  // token => beneficiary => benefit
+  mapping(address => mapping(address => Benefit)) public override benefits;
+  // beneficiary => [tokens]
+  mapping(address => EnumerableSet.AddressSet) internal _tokensPerBeneficiary;
 
   constructor(address _governance) Governable(_governance) {}
 
@@ -37,13 +37,19 @@ contract VestingWallet is IVestingWallet, Governable {
     return _releasableSchedule(_benefit) - _benefit.released;
   }
 
-  // TODO: make internal
-  function isBeneficiary(address _beneficiary) public view override returns (bool) {
-    return _beneficiaries.contains(_beneficiary);
+  function getBeneficiaries() external view override returns (address[] memory) {
+    return _beneficiaries.values();
+  }
+
+  function getTokens() external view override returns (address[] memory) {
+    return _vestedTokens.values();
+  }
+
+  function getTokensOf(address _beneficiary) external view override returns (address[] memory) {
+    return _tokensPerBeneficiary[_beneficiary].values();
   }
 
   // methods
-
   function addBenefit(
     address _beneficiary,
     uint256 _startDate,
@@ -86,14 +92,13 @@ contract VestingWallet is IVestingWallet, Governable {
 
     uint256 _transferToOwner = _benefit.amount - _benefit.released;
 
-    _benefit.released = 0;
-    _benefit.amount = 0;
-
     totalAmountPerToken[_token] -= _transferToOwner;
 
     if (_transferToOwner != 0) {
       IERC20(_token).safeTransfer(msg.sender, _transferToOwner);
     }
+
+    _deleteBenefit(_token, _beneficiary);
 
     emit BenefitRemoved(_token, _beneficiary, _transferToOwner);
   }
@@ -127,9 +132,9 @@ contract VestingWallet is IVestingWallet, Governable {
     address _token,
     uint256 _amount
   ) internal {
-    if (!isBeneficiary(_beneficiary)) {
-      _beneficiaries.add(_beneficiary);
-    }
+    _beneficiaries.add(_beneficiary);
+    _vestedTokens.add(_token);
+    _tokensPerBeneficiary[_beneficiary].add(_token);
 
     Benefit storage _benefit = benefits[_token][_beneficiary];
 
@@ -159,6 +164,10 @@ contract VestingWallet is IVestingWallet, Governable {
     _benefit.released += _releasable;
     totalAmountPerToken[_token] -= _releasable;
 
+    if (_benefit.released == _benefit.amount) {
+      _deleteBenefit(_token, _beneficiary);
+    }
+
     SafeERC20.safeTransfer(IERC20(_token), _beneficiary, _releasable);
 
     emit BenefitReleased(_token, _beneficiary, _releasable);
@@ -174,6 +183,20 @@ contract VestingWallet is IVestingWallet, Governable {
       return 0;
     } else {
       return Math.min(_totalAllocation, (_totalAllocation * (_timestamp - _start)) / _duration);
+    }
+  }
+
+  function _deleteBenefit(address _token, address _beneficiary) internal {
+    delete benefits[_token][_beneficiary];
+
+    _tokensPerBeneficiary[_beneficiary].remove(_token);
+
+    if (_tokensPerBeneficiary[_beneficiary].length() == 0) {
+      _beneficiaries.remove(_beneficiary);
+    }
+
+    if (totalAmountPerToken[_token] == 0) {
+      _vestedTokens.remove(_token);
     }
   }
 }
