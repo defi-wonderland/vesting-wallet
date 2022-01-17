@@ -86,21 +86,14 @@ contract VestingWallet is IVestingWallet, Governable {
   }
 
   function removeBenefit(address _token, address _beneficiary) external override onlyGovernance {
-    _release(_token, _beneficiary);
+    _removeBenefit(_token, _beneficiary);
+  }
 
-    Benefit storage _benefit = benefits[_token][_beneficiary];
-
-    uint256 _transferToOwner = _benefit.amount - _benefit.released;
-
-    totalAmountPerToken[_token] -= _transferToOwner;
-
-    if (_transferToOwner != 0) {
-      IERC20(_token).safeTransfer(msg.sender, _transferToOwner);
+  // TODO: add tests
+  function removeBeneficiary(address _beneficiary) external override onlyGovernance {
+    while (_tokensPerBeneficiary[_beneficiary].length() > 0) {
+      _removeBenefit(_tokensPerBeneficiary[_beneficiary].at(0), _beneficiary);
     }
-
-    _deleteBenefit(_token, _beneficiary);
-
-    emit BenefitRemoved(_token, _beneficiary, _transferToOwner);
   }
 
   function release(address _token) external override {
@@ -183,6 +176,24 @@ contract VestingWallet is IVestingWallet, Governable {
     SafeERC20.safeTransfer(IERC20(_token), _beneficiary, _releasable);
 
     emit BenefitReleased(_token, _beneficiary, _releasable);
+  }
+
+  function _removeBenefit(address _token, address _beneficiary) internal {
+    _release(_token, _beneficiary);
+
+    Benefit storage _benefit = benefits[_token][_beneficiary];
+
+    uint256 _transferToOwner = _benefit.amount - _benefit.released;
+
+    totalAmountPerToken[_token] -= _transferToOwner;
+
+    if (_transferToOwner != 0) {
+      IERC20(_token).safeTransfer(msg.sender, _transferToOwner);
+    }
+
+    _deleteBenefit(_token, _beneficiary);
+
+    emit BenefitRemoved(_token, _beneficiary, _transferToOwner);
   }
 
   function _releasableSchedule(Benefit memory _benefit) internal view returns (uint256) {
