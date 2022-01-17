@@ -1,5 +1,21 @@
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.0;
+
+/*
+
+Coded with ♥ by
+
+██████╗░███████╗███████╗██╗  ░██╗░░░░░░░██╗░█████╗░███╗░░██╗██████╗░███████╗██████╗░██╗░░░░░░█████╗░███╗░░██╗██████╗░
+██╔══██╗██╔════╝██╔════╝██║  ░██║░░██╗░░██║██╔══██╗████╗░██║██╔══██╗██╔════╝██╔══██╗██║░░░░░██╔══██╗████╗░██║██╔══██╗
+██║░░██║█████╗░░█████╗░░██║  ░╚██╗████╗██╔╝██║░░██║██╔██╗██║██║░░██║█████╗░░██████╔╝██║░░░░░███████║██╔██╗██║██║░░██║
+██║░░██║██╔══╝░░██╔══╝░░██║  ░░████╔═████║░██║░░██║██║╚████║██║░░██║██╔══╝░░██╔══██╗██║░░░░░██╔══██║██║╚████║██║░░██║
+██████╔╝███████╗██║░░░░░██║  ░░╚██╔╝░╚██╔╝░╚█████╔╝██║░╚███║██████╔╝███████╗██║░░██║███████╗██║░░██║██║░╚███║██████╔╝
+╚═════╝░╚══════╝╚═╝░░░░░╚═╝  ░░░╚═╝░░░╚═╝░░░╚════╝░╚═╝░░╚══╝╚═════╝░╚══════╝╚═╝░░╚═╝╚══════╝╚═╝░░╚═╝╚═╝░░╚══╝╚═════╝░
+
+https://defi.sucks
+
+*/
+
+pragma solidity >=0.8.4 <0.9.0;
 
 import '@openzeppelin/contracts/utils/math/Math.sol';
 import '@openzeppelin/contracts/token/ERC20/IERC20.sol';
@@ -14,42 +30,48 @@ contract VestingWallet is IVestingWallet, Governable {
 
   EnumerableSet.AddressSet internal _vestedTokens;
   EnumerableSet.AddressSet internal _beneficiaries;
-  // token => amount
-  mapping(address => uint256) public override totalAmountPerToken;
-  // token => beneficiary => benefit
-  mapping(address => mapping(address => Benefit)) public override benefits;
-  // beneficiary => [tokens]
-  mapping(address => EnumerableSet.AddressSet) internal _tokensPerBeneficiary;
+  /// @inheritdoc IVestingWallet
+  mapping(address => uint256) public override totalAmountPerToken; // token => amount
+  /// @inheritdoc IVestingWallet
+  mapping(address => mapping(address => Benefit)) public override benefits; // token => beneficiary => benefit
+  mapping(address => EnumerableSet.AddressSet) internal _tokensPerBeneficiary; // beneficiary => [tokens]
 
   constructor(address _governance) Governable(_governance) {}
 
-  // views
+  // Views
 
+  /// @inheritdoc IVestingWallet
   function releaseDate(address _token, address _beneficiary) external view override returns (uint256) {
     Benefit memory _benefit = benefits[_token][_beneficiary];
 
     return _benefit.startDate + _benefit.duration;
   }
 
+  /// @inheritdoc IVestingWallet
   function releasableAmount(address _token, address _beneficiary) external view override returns (uint256) {
     Benefit memory _benefit = benefits[_token][_beneficiary];
 
     return _releasableSchedule(_benefit) - _benefit.released;
   }
 
+  /// @inheritdoc IVestingWallet
   function getBeneficiaries() external view override returns (address[] memory) {
     return _beneficiaries.values();
   }
 
+  /// @inheritdoc IVestingWallet
   function getTokens() external view override returns (address[] memory) {
     return _vestedTokens.values();
   }
 
+  /// @inheritdoc IVestingWallet
   function getTokensOf(address _beneficiary) external view override returns (address[] memory) {
     return _tokensPerBeneficiary[_beneficiary].values();
   }
 
-  // methods
+  // Methods
+
+  /// @inheritdoc IVestingWallet
   function addBenefit(
     address _beneficiary,
     uint256 _startDate,
@@ -63,6 +85,7 @@ contract VestingWallet is IVestingWallet, Governable {
     IERC20(_token).safeTransferFrom(msg.sender, address(this), _amount);
   }
 
+  /// @inheritdoc IVestingWallet
   function addBenefits(
     address _token,
     address[] memory __beneficiaries,
@@ -71,7 +94,7 @@ contract VestingWallet is IVestingWallet, Governable {
     uint256 _duration
   ) external override onlyGovernance {
     uint256 _length = __beneficiaries.length;
-    if (_length != _amounts.length) revert WrongInputs();
+    if (_length != _amounts.length) revert WrongLengthAmounts();
 
     uint256 _vestedAmount;
 
@@ -85,24 +108,29 @@ contract VestingWallet is IVestingWallet, Governable {
     IERC20(_token).safeTransferFrom(msg.sender, address(this), _vestedAmount);
   }
 
+  /// @inheritdoc IVestingWallet
   function removeBenefit(address _token, address _beneficiary) external override onlyGovernance {
     _removeBenefit(_token, _beneficiary);
   }
 
+  /// @inheritdoc IVestingWallet
   function removeBeneficiary(address _beneficiary) external override onlyGovernance {
     while (_tokensPerBeneficiary[_beneficiary].length() > 0) {
       _removeBenefit(_tokensPerBeneficiary[_beneficiary].at(0), _beneficiary);
     }
   }
 
+  /// @inheritdoc IVestingWallet
   function release(address _token) external override {
     _release(_token, msg.sender);
   }
 
+  /// @inheritdoc IVestingWallet
   function release(address _token, address _beneficiary) external override {
     _release(_token, _beneficiary);
   }
 
+  /// @inheritdoc IVestingWallet
   function release(address[] memory _tokens) external override {
     uint256 _length = _tokens.length;
     address _beneficiary = msg.sender;
@@ -111,6 +139,7 @@ contract VestingWallet is IVestingWallet, Governable {
     }
   }
 
+  /// @inheritdoc IVestingWallet
   function release(address[] memory _tokens, address _beneficiary) external override {
     uint256 _length = _tokens.length;
     for (uint256 _i; _i < _length; _i++) {
@@ -118,6 +147,7 @@ contract VestingWallet is IVestingWallet, Governable {
     }
   }
 
+  /// @inheritdoc IDustCollector
   function sendDust(address _token) external override onlyGovernance {
     uint256 _amount;
 
@@ -127,7 +157,7 @@ contract VestingWallet is IVestingWallet, Governable {
     emit DustSent(_token, _amount, governance);
   }
 
-  // internal
+  // Internal
 
   function _addBenefit(
     address _beneficiary,

@@ -3,7 +3,6 @@
 pragma solidity >=0.8.4 <0.9.0;
 
 interface IBaseErrors {
-  error Unauthorized();
   /// @notice Throws if a variable is assigned to the zero address
   error ZeroAddress();
 }
