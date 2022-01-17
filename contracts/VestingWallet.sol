@@ -56,7 +56,7 @@ contract VestingWallet is IVestingWallet, Governable {
     uint256 _duration,
     address _token,
     uint256 _amount
-  ) public override onlyGovernance {
+  ) external override onlyGovernance {
     _addBenefit(_beneficiary, _startDate, _duration, _token, _amount);
     totalAmountPerToken[_token] += _amount;
 
@@ -89,7 +89,6 @@ contract VestingWallet is IVestingWallet, Governable {
     _removeBenefit(_token, _beneficiary);
   }
 
-  // TODO: add tests
   function removeBeneficiary(address _beneficiary) external override onlyGovernance {
     while (_tokensPerBeneficiary[_beneficiary].length() > 0) {
       _removeBenefit(_tokensPerBeneficiary[_beneficiary].at(0), _beneficiary);
@@ -119,7 +118,7 @@ contract VestingWallet is IVestingWallet, Governable {
     }
   }
 
-  function sendDust(address _token) public override onlyGovernance {
+  function sendDust(address _token) external override onlyGovernance {
     uint256 _amount;
 
     _amount = IERC20(_token).balanceOf(address(this)) - totalAmountPerToken[_token];
