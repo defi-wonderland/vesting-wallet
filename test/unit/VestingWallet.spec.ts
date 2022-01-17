@@ -94,10 +94,13 @@ describe('VestingWallet', () => {
       [beneficiary, START_DATE, DURATION, DAI_ADDRESS, VEST_AMOUNT]
     );
 
-    context('when the beneficiary and the token are not registered yet', () => {
+    context('when there was no previous benefit', () => {
+      let tx: Transaction;
+
       beforeEach(async () => {
         dai.transferFrom.returns(true);
-        await vestingWallet.connect(owner).addBenefit(beneficiary, START_DATE, DURATION, DAI_ADDRESS, VEST_AMOUNT);
+
+        tx = await vestingWallet.connect(owner).addBenefit(beneficiary, START_DATE, DURATION, DAI_ADDRESS, VEST_AMOUNT);
       });
 
       it('should register the beneficiary', async () => {
@@ -110,16 +113,6 @@ describe('VestingWallet', () => {
 
       it('should add the token to the beneficiary list of tokens', async () => {
         expect(await vestingWallet.callStatic.getTokensOf(beneficiary)).to.include(DAI_ADDRESS);
-      });
-    });
-
-    context('when there was no previous benefit', () => {
-      let tx: Transaction;
-
-      beforeEach(async () => {
-        dai.transferFrom.returns(true);
-
-        tx = await vestingWallet.connect(owner).addBenefit(beneficiary, START_DATE, DURATION, DAI_ADDRESS, VEST_AMOUNT);
       });
 
       it('should transfer the token to the contract', async () => {
@@ -142,8 +135,7 @@ describe('VestingWallet', () => {
         expect((await vestingWallet.callStatic.benefits(DAI_ADDRESS, beneficiary)).startDate).to.equal(START_DATE);
       });
 
-      // TODO: add events on other contexts
-      it('should emit an event', async () => {
+      it('should emit event', async () => {
         await expect(tx).to.emit(vestingWallet, 'BenefitAdded').withArgs(DAI_ADDRESS, beneficiary, VEST_AMOUNT, START_DATE, RELEASE_DATE);
       });
     });
@@ -183,10 +175,21 @@ describe('VestingWallet', () => {
       });
 
       context('when previous benefit has not yet started', () => {
-        it('should add previous amount to new benefit', async () => {
-          await vestingWallet.connect(owner).addBenefit(beneficiary, NEW_START_DATE, DURATION, DAI_ADDRESS, VEST_AMOUNT);
+        let tx: Transaction;
 
+        beforeEach(async () => {
+          tx = await vestingWallet.connect(owner).addBenefit(beneficiary, NEW_START_DATE, DURATION, DAI_ADDRESS, VEST_AMOUNT);
+        });
+
+        it('should add previous amount to new benefit', async () => {
           expect((await vestingWallet.benefits(DAI_ADDRESS, beneficiary)).amount).to.eq(VEST_AMOUNT.mul(2));
+        });
+
+        it('should emit event', async () => {
+          await expect(tx).not.emit(vestingWallet, 'BenefitReleased');
+          await expect(tx)
+            .to.emit(vestingWallet, 'BenefitAdded')
+            .withArgs(DAI_ADDRESS, beneficiary, VEST_AMOUNT.mul(2), NEW_START_DATE, NEW_START_DATE + DURATION);
         });
       });
 
@@ -195,14 +198,17 @@ describe('VestingWallet', () => {
         let timestamp: number;
         let partialDuration: number;
         let partialBenefit: BigNumber;
+        let newBenefit: BigNumber;
+        let tx: Transaction;
 
         beforeEach(async () => {
           await evm.advanceToTimeAndBlock(START_DATE + DURATION / PARTIAL_PROPORTION);
-          await vestingWallet.connect(owner).addBenefit(beneficiary, NEW_START_DATE, DURATION, DAI_ADDRESS, VEST_AMOUNT);
+          tx = await vestingWallet.connect(owner).addBenefit(beneficiary, NEW_START_DATE, DURATION, DAI_ADDRESS, VEST_AMOUNT);
           // query latest block timestamp for precise calculation
           timestamp = (await ethers.provider.getBlock('latest')).timestamp;
           partialDuration = timestamp - START_DATE;
           partialBenefit = VEST_AMOUNT.mul(partialDuration).div(DURATION);
+          newBenefit = VEST_AMOUNT.add(VEST_AMOUNT.sub(partialBenefit));
         });
 
         it('should release ongoing benefit', async () => {
@@ -210,14 +216,23 @@ describe('VestingWallet', () => {
         });
 
         it('should add remaining amount to new benefit', async () => {
-          expect((await vestingWallet.benefits(DAI_ADDRESS, beneficiary)).amount).to.eq(VEST_AMOUNT.add(VEST_AMOUNT.sub(partialBenefit)));
+          expect((await vestingWallet.benefits(DAI_ADDRESS, beneficiary)).amount).to.eq(newBenefit);
+        });
+
+        it('should emit events', async () => {
+          await expect(tx).to.emit(vestingWallet, 'BenefitReleased').withArgs(DAI_ADDRESS, beneficiary, partialBenefit);
+          await expect(tx)
+            .to.emit(vestingWallet, 'BenefitAdded')
+            .withArgs(DAI_ADDRESS, beneficiary, newBenefit, NEW_START_DATE, NEW_START_DATE + DURATION);
         });
       });
 
       context('when previous benefit has ended', () => {
+        let tx: Transaction;
+
         beforeEach(async () => {
           await evm.advanceToTimeAndBlock(START_DATE + DURATION);
-          await vestingWallet.connect(owner).addBenefit(beneficiary, NEW_START_DATE, DURATION, DAI_ADDRESS, VEST_AMOUNT);
+          tx = await vestingWallet.connect(owner).addBenefit(beneficiary, NEW_START_DATE, DURATION, DAI_ADDRESS, VEST_AMOUNT);
         });
 
         it('should release all previous benefit', async () => {
@@ -226,6 +241,13 @@ describe('VestingWallet', () => {
 
         it('should not add any amount to new benefit', async () => {
           expect((await vestingWallet.benefits(DAI_ADDRESS, beneficiary)).amount).to.eq(VEST_AMOUNT);
+        });
+
+        it('should emit events', async () => {
+          await expect(tx).to.emit(vestingWallet, 'BenefitReleased').withArgs(DAI_ADDRESS, beneficiary, VEST_AMOUNT);
+          await expect(tx)
+            .to.emit(vestingWallet, 'BenefitAdded')
+            .withArgs(DAI_ADDRESS, beneficiary, VEST_AMOUNT, NEW_START_DATE, NEW_START_DATE + DURATION);
         });
       });
     });
@@ -246,10 +268,13 @@ describe('VestingWallet', () => {
       [DAI_ADDRESS, [beneficiary1, beneficiary2], [amount1, amount2], START_DATE, DURATION]
     );
 
-    context('when the beneficiary and the token are not registered yet', () => {
+    context('when there was no previous benefit', () => {
+      let tx: Transaction;
+
       beforeEach(async () => {
         dai.transferFrom.returns(true);
-        await vestingWallet.connect(owner).addBenefits(DAI_ADDRESS, [beneficiary1, beneficiary2], [amount1, amount2], START_DATE, DURATION);
+
+        tx = await vestingWallet.connect(owner).addBenefits(DAI_ADDRESS, [beneficiary1, beneficiary2], [amount1, amount2], START_DATE, DURATION);
       });
 
       it('should register the beneficiaries', async () => {
@@ -263,16 +288,6 @@ describe('VestingWallet', () => {
       it('should add the token to the beneficiaries list of tokens', async () => {
         expect(await vestingWallet.callStatic.getTokensOf(beneficiary1)).to.include(DAI_ADDRESS);
         expect(await vestingWallet.callStatic.getTokensOf(beneficiary2)).to.include(DAI_ADDRESS);
-      });
-    });
-
-    context('when there was no previous benefit', () => {
-      let tx: Transaction;
-
-      beforeEach(async () => {
-        dai.transferFrom.returns(true);
-
-        tx = await vestingWallet.connect(owner).addBenefits(DAI_ADDRESS, [beneficiary1, beneficiary2], [amount1, amount2], START_DATE, DURATION);
       });
 
       it('should make 1 token transfer to the contract', async () => {
@@ -298,8 +313,8 @@ describe('VestingWallet', () => {
         expect((await vestingWallet.callStatic.benefits(DAI_ADDRESS, beneficiary2)).startDate).to.equal(START_DATE);
       });
 
-      // TODO: add events on other contexts
-      it('should emit an event for each beneficiary', async () => {
+      it('should emit events', async () => {
+        await expect(tx).not.emit(vestingWallet, 'BenefitReleased');
         await expect(tx).to.emit(vestingWallet, 'BenefitAdded').withArgs(DAI_ADDRESS, beneficiary1, amount1, START_DATE, RELEASE_DATE);
         await expect(tx).to.emit(vestingWallet, 'BenefitAdded').withArgs(DAI_ADDRESS, beneficiary2, amount2, START_DATE, RELEASE_DATE);
       });
@@ -340,12 +355,26 @@ describe('VestingWallet', () => {
       });
 
       context('when previous benefit has not yet started', () => {
-        it('should add previous amount to new benefit', async () => {
-          await vestingWallet
+        let tx: Transaction;
+
+        beforeEach(async () => {
+          tx = await vestingWallet
             .connect(owner)
             .addBenefits(DAI_ADDRESS, [beneficiary1, beneficiary2], [amount1, amount2], NEW_START_DATE, DURATION);
+        });
 
+        it('should add previous amount to new benefit', async () => {
           expect((await vestingWallet.benefits(DAI_ADDRESS, beneficiary1)).amount).to.eq(VEST_AMOUNT.add(amount1));
+        });
+
+        it('should emit events', async () => {
+          await expect(tx).not.emit(vestingWallet, 'BenefitReleased');
+          await expect(tx)
+            .to.emit(vestingWallet, 'BenefitAdded')
+            .withArgs(DAI_ADDRESS, beneficiary1, VEST_AMOUNT.add(amount1), NEW_START_DATE, NEW_START_DATE + DURATION);
+          await expect(tx)
+            .to.emit(vestingWallet, 'BenefitAdded')
+            .withArgs(DAI_ADDRESS, beneficiary2, amount2, NEW_START_DATE, NEW_START_DATE + DURATION);
         });
       });
 
@@ -354,10 +383,12 @@ describe('VestingWallet', () => {
         let timestamp: number;
         let partialDuration: number;
         let partialBenefit: BigNumber;
+        let newBenefit: BigNumber;
+        let tx: Transaction;
 
         beforeEach(async () => {
           await evm.advanceToTimeAndBlock(START_DATE + DURATION / PARTIAL_PROPORTION);
-          await vestingWallet
+          tx = await vestingWallet
             .connect(owner)
             .addBenefits(DAI_ADDRESS, [beneficiary1, beneficiary2], [amount1, amount2], NEW_START_DATE, DURATION);
 
@@ -365,6 +396,7 @@ describe('VestingWallet', () => {
           timestamp = (await ethers.provider.getBlock('latest')).timestamp;
           partialDuration = timestamp - START_DATE;
           partialBenefit = VEST_AMOUNT.mul(partialDuration).div(DURATION);
+          newBenefit = VEST_AMOUNT.sub(partialBenefit).add(amount1);
         });
 
         it('should release ongoing benefit', async () => {
@@ -372,15 +404,26 @@ describe('VestingWallet', () => {
         });
 
         it('should add remaining amount to new benefit', async () => {
-          const expectedAmount = VEST_AMOUNT.sub(partialBenefit).add(amount1);
-          expect((await vestingWallet.benefits(DAI_ADDRESS, beneficiary1)).amount).to.eq(expectedAmount);
+          const amount = (await vestingWallet.benefits(DAI_ADDRESS, beneficiary1)).amount;
+          expect(amount).to.eq(newBenefit);
+        });
+
+        it('should emit events', async () => {
+          await expect(tx).to.emit(vestingWallet, 'BenefitReleased').withArgs(DAI_ADDRESS, beneficiary1, partialBenefit);
+          await expect(tx)
+            .to.emit(vestingWallet, 'BenefitAdded')
+            .withArgs(DAI_ADDRESS, beneficiary1, newBenefit, NEW_START_DATE, NEW_START_DATE + DURATION);
+          await expect(tx)
+            .to.emit(vestingWallet, 'BenefitAdded')
+            .withArgs(DAI_ADDRESS, beneficiary2, amount2, NEW_START_DATE, NEW_START_DATE + DURATION);
         });
       });
 
       context('when previous benefit has ended', () => {
+        let tx: Transaction;
         beforeEach(async () => {
           await evm.advanceToTimeAndBlock(START_DATE + DURATION);
-          await vestingWallet
+          tx = await vestingWallet
             .connect(owner)
             .addBenefits(DAI_ADDRESS, [beneficiary1, beneficiary2], [amount1, amount2], NEW_START_DATE, DURATION);
         });
@@ -391,6 +434,16 @@ describe('VestingWallet', () => {
 
         it('should not add any amount to new benefit', async () => {
           expect((await vestingWallet.benefits(DAI_ADDRESS, beneficiary1)).amount).to.eq(amount1);
+        });
+
+        it('should emit events', async () => {
+          await expect(tx).to.emit(vestingWallet, 'BenefitReleased').withArgs(DAI_ADDRESS, beneficiary1, VEST_AMOUNT);
+          await expect(tx)
+            .to.emit(vestingWallet, 'BenefitAdded')
+            .withArgs(DAI_ADDRESS, beneficiary1, amount1, NEW_START_DATE, NEW_START_DATE + DURATION);
+          await expect(tx)
+            .to.emit(vestingWallet, 'BenefitAdded')
+            .withArgs(DAI_ADDRESS, beneficiary2, amount2, NEW_START_DATE, NEW_START_DATE + DURATION);
         });
       });
     });
@@ -452,8 +505,8 @@ describe('VestingWallet', () => {
         expect(dai.transfer).to.have.been.calledWith(owner.address, VEST_AMOUNT);
       });
 
-      it('should emit an event', async () => {
-        await expect(await vestingWallet.connect(owner).removeBenefit(DAI_ADDRESS, beneficiary))
+      it('should emit event', async () => {
+        expect(await vestingWallet.connect(owner).removeBenefit(DAI_ADDRESS, beneficiary))
           .to.emit(vestingWallet, 'BenefitRemoved')
           .withArgs(DAI_ADDRESS, beneficiary, VEST_AMOUNT);
       });
@@ -463,33 +516,43 @@ describe('VestingWallet', () => {
       const DENOMINATOR = 3;
       let timestamp: number;
       let partialDuration: number;
+      let partialBenefit: BigNumber;
+      let tx: Transaction;
 
       beforeEach(async () => {
         dai.transfer.returns(true);
 
         await evm.advanceToTimeAndBlock(START_DATE + DURATION / DENOMINATOR);
-        await vestingWallet.connect(owner).removeBenefit(DAI_ADDRESS, beneficiary);
+        tx = await vestingWallet.connect(owner).removeBenefit(DAI_ADDRESS, beneficiary);
 
         // query latest block timestamp for precise calculation
         timestamp = (await ethers.provider.getBlock('latest')).timestamp;
         partialDuration = timestamp - START_DATE;
+        partialBenefit = VEST_AMOUNT.mul(partialDuration).div(DURATION);
       });
 
       it('should transfer releaseable ERC20 amount to beneficiary', async () => {
-        expect(dai.transfer).to.have.been.calledWith(beneficiary, VEST_AMOUNT.mul(partialDuration).div(DURATION));
+        expect(dai.transfer).to.have.been.calledWith(beneficiary, partialBenefit);
       });
 
       it('should transfer remaining ERC20 amount to owner', async () => {
-        expect(dai.transfer).to.have.been.calledWith(owner.address, VEST_AMOUNT.sub(VEST_AMOUNT.mul(partialDuration).div(DURATION)));
+        expect(dai.transfer).to.have.been.calledWith(owner.address, VEST_AMOUNT.sub(partialBenefit));
+      });
+
+      it('should emit events', async () => {
+        await expect(tx).to.emit(vestingWallet, 'BenefitReleased').withArgs(DAI_ADDRESS, beneficiary, partialBenefit);
+        await expect(tx).to.emit(vestingWallet, 'BenefitRemoved').withArgs(DAI_ADDRESS, beneficiary, VEST_AMOUNT.sub(partialBenefit));
       });
     });
 
     context('when vesting period has ended', () => {
+      let tx: Transaction;
+
       beforeEach(async () => {
         dai.transfer.returns(true);
 
         await evm.advanceToTimeAndBlock(START_DATE + DURATION);
-        await vestingWallet.connect(owner).removeBenefit(DAI_ADDRESS, beneficiary);
+        tx = await vestingWallet.connect(owner).removeBenefit(DAI_ADDRESS, beneficiary);
       });
 
       it('should transfer total ERC20 amount to beneficiary', async () => {
@@ -510,6 +573,11 @@ describe('VestingWallet', () => {
 
       it('should remove the token if it has not more beneficiaries', async () => {
         expect(await vestingWallet.callStatic.getTokens()).to.not.include(DAI_ADDRESS);
+      });
+
+      it('should emit events', async () => {
+        await expect(tx).to.emit(vestingWallet, 'BenefitReleased').withArgs(DAI_ADDRESS, beneficiary, VEST_AMOUNT);
+        await expect(tx).to.emit(vestingWallet, 'BenefitRemoved').withArgs(DAI_ADDRESS, beneficiary, 0);
       });
     });
   });
@@ -541,7 +609,7 @@ describe('VestingWallet', () => {
       expect(dai.transfer).to.have.been.calledWith(owner.address, TEN_DAIs);
     });
 
-    it('should emit an event', async () => {
+    it('should emit event', async () => {
       dai.transfer.returns(true);
 
       await expect(vestingWallet.connect(owner).sendDust(DAI_ADDRESS))
@@ -569,16 +637,13 @@ describe('VestingWallet', () => {
           },
         },
       });
-
       await vestingWallet.setVariable('totalAmountPerToken', {
         [DAI_ADDRESS]: VEST_AMOUNT.mul(2), // one by each beneficiary
       });
-
       await vestingWallet.addBeneficiaryForTest(beneficiary);
       await vestingWallet.addBeneficiaryForTest(anotherBeneficiary);
 
       await vestingWallet.addTokenForTest(DAI_ADDRESS);
-
       await vestingWallet.addTokenToBeneficiaryForTest(DAI_ADDRESS, beneficiary);
       await vestingWallet.addTokenToBeneficiaryForTest(DAI_ADDRESS, anotherBeneficiary);
     });
@@ -611,7 +676,7 @@ describe('VestingWallet', () => {
         expect(dai.transfer).to.not.have.been.called;
       });
 
-      it('should not emit the BenefitReleased event', async () => {
+      it('should not emit events', async () => {
         await expect(vestingWallet.connect(owner)['release(address,address)'](DAI_ADDRESS, beneficiary)).to.not.emit(
           vestingWallet,
           'BenefitReleased'
@@ -641,7 +706,7 @@ describe('VestingWallet', () => {
         expect(dai.transfer).to.have.been.calledWith(beneficiary, releaseableAmount);
       });
 
-      it('should emit the BenefitReleased event', async () => {
+      it('should emit event', async () => {
         await expect(tx).to.emit(vestingWallet, 'BenefitReleased').withArgs(DAI_ADDRESS, beneficiary, releaseableAmount);
       });
     });
@@ -658,15 +723,11 @@ describe('VestingWallet', () => {
         expect(dai.transfer).to.have.been.calledWith(beneficiary, VEST_AMOUNT);
       });
 
-      it('should emit the BenefitReleased event', async () => {
-        await expect(tx).to.emit(vestingWallet, 'BenefitReleased').withArgs(DAI_ADDRESS, beneficiary, VEST_AMOUNT);
-      });
-
       it('should delete the benefit', async () => {
         expect((await vestingWallet.callStatic.benefits(DAI_ADDRESS, beneficiary)).startDate).to.be.equal(0);
       });
 
-      it('should remove the beneficiary from the beneficiaries list', async () => {
+      it('should remove the beneficiary from the list', async () => {
         expect(await vestingWallet.callStatic.getBeneficiaries()).to.not.include(beneficiary);
       });
 
@@ -820,8 +881,8 @@ describe('VestingWallet', () => {
         expect(await vestingWallet.callStatic.getTokensOf(anotherBeneficiary)).to.include(DAI_ADDRESS);
       });
 
-      it('should not remove the token if there is another beneficiary using it', async () => {
-        expect(await vestingWallet.callStatic.getTokens()).to.include(DAI_ADDRESS);
+      it('should emit event', async () => {
+        await expect(tx).to.emit(vestingWallet, 'BenefitReleased').withArgs(DAI_ADDRESS, beneficiary, VEST_AMOUNT);
       });
     });
   });
@@ -897,7 +958,7 @@ describe('VestingWallet', () => {
         expect(usdc.transfer).to.not.have.been.called;
       });
 
-      it('should not emit event', async () => {
+      it('should not emit events', async () => {
         await expect(vestingWallet.connect(owner)['release(address[],address)']([DAI_ADDRESS, USDC_ADDRESS], beneficiary)).to.not.emit(
           vestingWallet,
           'BenefitReleased'
@@ -1181,6 +1242,11 @@ describe('VestingWallet', () => {
 
       it('should remove the token if it has not more beneficiaries', async () => {
         expect(await vestingWallet.callStatic.getTokens()).to.not.include(DAI_ADDRESS);
+      });
+
+      it('should emit events', async () => {
+        await expect(tx).to.emit(vestingWallet, 'BenefitReleased').withArgs(DAI_ADDRESS, beneficiary, VEST_AMOUNT);
+        await expect(tx).to.emit(vestingWallet, 'BenefitReleased').withArgs(USDC_ADDRESS, beneficiary, VEST_AMOUNT);
       });
     });
   });

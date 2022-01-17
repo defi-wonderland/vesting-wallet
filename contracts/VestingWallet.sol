@@ -161,7 +161,7 @@ contract VestingWallet is IVestingWallet, Governable {
     _benefit.amount = _amount + pendingAmount;
     _benefit.released = 0;
 
-    emit BenefitAdded(_token, _beneficiary, _amount, _startDate, _startDate + _duration);
+    emit BenefitAdded(_token, _beneficiary, _benefit.amount, _startDate, _startDate + _duration);
   }
 
   function _release(address _token, address _beneficiary) internal {
