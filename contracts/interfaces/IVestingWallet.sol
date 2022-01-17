@@ -61,7 +61,11 @@ interface IVestingWallet is IDustCollector {
 
   function removeBenefit(address _token, address _beneficiary) external;
 
+  function release(address _token) external;
+
   function release(address _token, address _beneficiary) external;
+
+  function release(address[] memory _tokens) external;
 
   function release(address[] memory _tokens, address _beneficiary) external;
 }

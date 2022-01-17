@@ -103,8 +103,20 @@ contract VestingWallet is IVestingWallet, Governable {
     emit BenefitRemoved(_token, _beneficiary, _transferToOwner);
   }
 
+  function release(address _token) external override {
+    _release(_token, msg.sender);
+  }
+
   function release(address _token, address _beneficiary) external override {
     _release(_token, _beneficiary);
+  }
+
+  function release(address[] memory _tokens) external override {
+    uint256 _length = _tokens.length;
+    address _beneficiary = msg.sender;
+    for (uint256 _i; _i < _length; _i++) {
+      _release(_tokens[_i], _beneficiary);
+    }
   }
 
   function release(address[] memory _tokens, address _beneficiary) external override {
