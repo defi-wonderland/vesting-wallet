@@ -9,7 +9,7 @@ import 'hardhat-gas-reporter';
 import 'hardhat-deploy';
 import 'solidity-coverage';
 import { HardhatUserConfig, MultiSolcUserConfig, NetworksUserConfig } from 'hardhat/types';
-import { getNodeUrl, accounts } from './utils/network';
+import { getNodeUrl } from './utils/network';
 import 'tsconfig-paths/register';
 
 const networks: NetworksUserConfig = process.env.TEST
@@ -28,23 +28,15 @@ const networks: NetworksUserConfig = process.env.TEST
       },
       localhost: {
         url: getNodeUrl('localhost'),
-        accounts: accounts('localhost'),
-      },
-      kovan: {
-        url: getNodeUrl('kovan'),
-        accounts: accounts('kovan'),
-      },
-      rinkeby: {
-        url: getNodeUrl('rinkeby'),
-        accounts: accounts('rinkeby'),
+        accounts: [process.env.LOCAL_MAINNET_PRIVATE_KEY as string],
       },
       ropsten: {
         url: getNodeUrl('ropsten'),
-        accounts: accounts('ropsten'),
+        accounts: [process.env.ROPSTEN_PRIVATE_KEY as string],
       },
       mainnet: {
         url: getNodeUrl('mainnet'),
-        accounts: accounts('mainnet'),
+        accounts: [process.env.MAINNET_PRIVATE_KEY as string],
       },
     };
 
