@@ -1,6 +1,6 @@
 {
   "name": "vesting-wallet",
-  "version": "0.0.1",
+  "version": "1.0.0",
   "description": "Wonderland Vesting Wallet",
   "keywords": [
     "ethereum",
@@ -16,14 +16,9 @@
     "url": "git+https://github.com/defi-wonderland/hardhat-boilerplate-ts.git"
   },
   "contributors": [
-    {
-      "name": "wei3erHase",
-      "url": "https://github.com/wei3erHase"
-    },
-    {
-      "name": "0xUwUnt",
-      "url": "https://github.com/0xUwUnt"
-    }
+    "wei3erHase (https://github.com/wei3erHase)",
+    "0xGorilla (https://github.com/0xGorilla)",
+    "0xUwUnt (https://github.com/0xUwUnt)"
   ],
   "scripts": {
     "compile": "hardhat compile",
