@@ -30,11 +30,11 @@ contract VestingWallet is IVestingWallet, Governable {
 
   EnumerableSet.AddressSet internal _vestedTokens;
   EnumerableSet.AddressSet internal _beneficiaries;
+  mapping(address => EnumerableSet.AddressSet) internal _tokensPerBeneficiary; // beneficiary => [tokens]
   /// @inheritdoc IVestingWallet
   mapping(address => uint256) public override totalAmountPerToken; // token => amount
   /// @inheritdoc IVestingWallet
   mapping(address => mapping(address => Benefit)) public override benefits; // token => beneficiary => benefit
-  mapping(address => EnumerableSet.AddressSet) internal _tokensPerBeneficiary; // beneficiary => [tokens]
 
   constructor(address _governance) Governable(_governance) {}
 
@@ -132,37 +132,22 @@ contract VestingWallet is IVestingWallet, Governable {
 
   /// @inheritdoc IVestingWallet
   function release(address[] calldata _tokens) external override {
-    uint256 _length = _tokens.length;
-    address _beneficiary = msg.sender;
-    for (uint256 _i; _i < _length; _i++) {
-      _release(_tokens[_i], _beneficiary);
-    }
+    _release(_tokens, msg.sender);
   }
 
   /// @inheritdoc IVestingWallet
   function release(address[] calldata _tokens, address _beneficiary) external override {
-    uint256 _length = _tokens.length;
-    for (uint256 _i; _i < _length; _i++) {
-      _release(_tokens[_i], _beneficiary);
-    }
+    _release(_tokens, _beneficiary);
   }
 
   /// @inheritdoc IVestingWallet
   function releaseAll() external override {
-    address[] memory _tokens = _tokensPerBeneficiary[msg.sender].values();
-    uint256 _length = _tokens.length;
-    for (uint256 _i; _i < _length; _i++) {
-      _release(_tokens[_i], msg.sender);
-    }
+    _releaseAll(msg.sender);
   }
 
   /// @inheritdoc IVestingWallet
   function releaseAll(address _beneficiary) external override {
-    address[] memory _tokens = _tokensPerBeneficiary[_beneficiary].values();
-    uint256 _length = _tokens.length;
-    for (uint256 _i; _i < _length; _i++) {
-      _release(_tokens[_i], _beneficiary);
-    }
+    _releaseAll(_beneficiary);
   }
 
   /// @inheritdoc IDustCollector
@@ -222,6 +207,21 @@ contract VestingWallet is IVestingWallet, Governable {
     SafeERC20.safeTransfer(IERC20(_token), _beneficiary, _releasable);
 
     emit BenefitReleased(_token, _beneficiary, _releasable);
+  }
+
+  function _release(address[] calldata _tokens, address _beneficiary) internal {
+    uint256 _length = _tokens.length;
+    for (uint256 _i; _i < _length; _i++) {
+      _release(_tokens[_i], _beneficiary);
+    }
+  }
+
+  function _releaseAll(address _beneficiary) internal {
+    address[] memory _tokens = _tokensPerBeneficiary[_beneficiary].values();
+    uint256 _length = _tokens.length;
+    for (uint256 _i; _i < _length; _i++) {
+      _release(_tokens[_i], _beneficiary);
+    }
   }
 
   function _removeBenefit(address _token, address _beneficiary) internal {
