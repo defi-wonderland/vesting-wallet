@@ -142,4 +142,11 @@ interface IVestingWallet is IDustCollector {
   /// @param _tokens List of ERC20 token to be vested
   /// @param _beneficiary Address of the beneficiary
   function release(address[] memory _tokens, address _beneficiary) external;
+
+  /// @notice Releases all tokens in their correspondent amounts to the function caller
+  function releaseAll() external;
+
+  /// @notice Releases all tokens in their correspondent amounts to a particular beneficiary
+  /// @param _beneficiary Address of the beneficiary
+  function releaseAll(address _beneficiary) external;
 }

@@ -147,6 +147,24 @@ contract VestingWallet is IVestingWallet, Governable {
     }
   }
 
+  /// @inheritdoc IVestingWallet
+  function releaseAll() external override {
+    address[] memory _tokens = _tokensPerBeneficiary[msg.sender].values();
+    uint256 _length = _tokens.length;
+    for (uint256 _i; _i < _length; _i++) {
+      _release(_tokens[_i], msg.sender);
+    }
+  }
+
+  /// @inheritdoc IVestingWallet
+  function releaseAll(address _beneficiary) external override {
+    address[] memory _tokens = _tokensPerBeneficiary[_beneficiary].values();
+    uint256 _length = _tokens.length;
+    for (uint256 _i; _i < _length; _i++) {
+      _release(_tokens[_i], _beneficiary);
+    }
+  }
+
   /// @inheritdoc IDustCollector
   function sendDust(address _token) external override onlyGovernance {
     uint256 _amount;
