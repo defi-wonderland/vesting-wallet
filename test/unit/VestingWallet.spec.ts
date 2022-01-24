@@ -160,6 +160,8 @@ describe('VestingWallet', () => {
         await vestingWallet.setVariable('totalAmountPerToken', {
           [DAI_ADDRESS]: VEST_AMOUNT,
         });
+
+        await vestingWallet.addTokenToBeneficiaryForTest(DAI_ADDRESS, beneficiary);
       });
 
       it('should overwrite start date', async () => {
@@ -241,6 +243,10 @@ describe('VestingWallet', () => {
 
         it('should not add any amount to new benefit', async () => {
           expect((await vestingWallet.benefits(DAI_ADDRESS, beneficiary)).amount).to.eq(VEST_AMOUNT);
+        });
+
+        it('should not delete token from beneficiary-token list', async () => {
+          expect(await vestingWallet.getTokensOf(beneficiary)).to.include(DAI_ADDRESS);
         });
 
         it('should emit events', async () => {
@@ -340,6 +346,8 @@ describe('VestingWallet', () => {
         await vestingWallet.setVariable('totalAmountPerToken', {
           [DAI_ADDRESS]: VEST_AMOUNT,
         });
+
+        await vestingWallet.addTokenToBeneficiaryForTest(DAI_ADDRESS, beneficiary1);
       });
 
       it('should overwrite start date', async () => {

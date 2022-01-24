@@ -88,8 +88,8 @@ contract VestingWallet is IVestingWallet, Governable {
   /// @inheritdoc IVestingWallet
   function addBenefits(
     address _token,
-    address[] memory __beneficiaries,
-    uint256[] memory _amounts,
+    address[] calldata __beneficiaries,
+    uint256[] calldata _amounts,
     uint256 _startDate,
     uint256 _duration
   ) external override onlyGovernance {
@@ -131,7 +131,7 @@ contract VestingWallet is IVestingWallet, Governable {
   }
 
   /// @inheritdoc IVestingWallet
-  function release(address[] memory _tokens) external override {
+  function release(address[] calldata _tokens) external override {
     uint256 _length = _tokens.length;
     address _beneficiary = msg.sender;
     for (uint256 _i; _i < _length; _i++) {
@@ -140,7 +140,7 @@ contract VestingWallet is IVestingWallet, Governable {
   }
 
   /// @inheritdoc IVestingWallet
-  function release(address[] memory _tokens, address _beneficiary) external override {
+  function release(address[] calldata _tokens, address _beneficiary) external override {
     uint256 _length = _tokens.length;
     for (uint256 _i; _i < _length; _i++) {
       _release(_tokens[_i], _beneficiary);
@@ -166,16 +166,15 @@ contract VestingWallet is IVestingWallet, Governable {
     address _token,
     uint256 _amount
   ) internal {
+    if (_tokensPerBeneficiary[_beneficiary].contains(_token)) {
+      _release(_token, _beneficiary);
+    }
+
     _beneficiaries.add(_beneficiary);
     _vestedTokens.add(_token);
     _tokensPerBeneficiary[_beneficiary].add(_token);
 
     Benefit storage _benefit = benefits[_token][_beneficiary];
-
-    if (_benefit.amount != 0) {
-      _release(_token, _beneficiary);
-    }
-
     _benefit.startDate = _startDate;
     _benefit.duration = _duration;
 
@@ -231,7 +230,7 @@ contract VestingWallet is IVestingWallet, Governable {
     uint256 _duration = _benefit.duration;
     uint256 _totalAllocation = _benefit.amount;
 
-    if (_timestamp < _start) {
+    if (_timestamp <= _start) {
       return 0;
     } else {
       return Math.min(_totalAllocation, (_totalAllocation * (_timestamp - _start)) / _duration);
