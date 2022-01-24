@@ -1,118 +1,40 @@
-# Hardhat Boilerplate
+# Vesting Contract
 
-## Why ?
+This contract handles the vesting of ERC20 tokens for multiple beneficiaries. Custody of multiple tokens can be given to this contract, which will release the token to the beneficiaries following a given vesting schedule.
 
-Thought to have a fast way of bootstraping projects with best practice's in mind. Having linters, prettiers, standards on how to commit, and changelog creation & maintenance.
+Tokens should be added to the contract through `addBenefit` function, any token externally transferred will be retrievable with the dust collector functionality.
 
----
+The owner of the contract has the ability to change the vesting schedules, or to remove the benefits for a particular beneficiary. Anyhow, the correspondent tokens prior to any modification will be released to the beneficiary keeping the prior vesting schedule.
 
-## How ?
+##### Disclaimer: non-standard ERC20s
 
-This is achieved using several hardhat plugins, and external known packages.
+This contract does not support non-standard ERC20 implementations where the transferred amount is not equal to the requested amount in the `transfer` params (tokens with inherent fees).
 
----
+##### Disclaimer: malicious ERC20s
 
-## Tools
+This contract expects a whitelisted selection of ERC20s, it naively trusts the `safeTransfer` will not revert, malicious implementations could affect the functionality of looped functions, like for example `removeBeneficiary` calls could be forced to revert.
 
-This boilerplate includes:
+## How to use
 
-- [Hardhat](https://hardhat.org/)
-- [Solhint](https://github.com/protofire/solhint)
-- [Prettier](https://github.com/prettier-solidity/prettier-plugin-solidity)
-- [Coverage](https://github.com/sc-forks/solidity-coverage)
-- [Gas reporter](https://github.com/cgewecke/hardhat-gas-reporter/tree/master)
-- [Commitlint](https://github.com/conventional-changelog/commitlint)
-- [Standard version](https://github.com/conventional-changelog/standard-version)
-- [Uniswap](https://github.com/Uniswap/uniswap-v2-periphery) + [Internal tooling](./test/utils/uniswap.ts)
+Owner can use any of the 2 functions to vest a benefit in the contract:
 
----
+- `addBenefit(token, beneficiary, amount, startDate, duration)`
+- `addBenefits(token, beneficiaries[], amounts[], startDate, duration)`
 
-## Commands
+He must have previously approved the ERC20 spending of the `amount`, or the sum of `amounts[]`.
 
-### **Coverage**
+Beneficiaries, at any given point, can claim their rewards using any of the following functions to release their tokens:
 
-```bash
-yarn coverage
-```
+- `release(token, beneficiary)`
+- `release(tokens[], beneficiary)`
+- `release(token)` (uses `msg.sender` as beneficiary)
+- `release(tokens[])` (uses `msg.sender` as beneficiary)
+- `releaseAll()` (uses `msg.sender` as beneficiary)
+- `releaseAll(beneficiary)`
 
-Runs solidity code coverage
-<br/>
+The contract will calculate, at the given timestamp, the amount of releasable tokens and transfer them to the rightful beneficiary. This functions have no access control, allowing anyone to use their gas for the release of the tokens.
 
-### **Fork**
+At any given point, the owner can choose to remove the benefits to a particular beneficiary, releasing first the correspondant amount of tokens to him, and transferring the remaining amount to the owner.
 
-```bash
-yarn fork
-```
-
-Runs a mainnet fork via hardhat's node forking util.
-
-```bash
-yarn fork:script {path}
-```
-
-Runs the script in mainnet's fork.
-
-```
-yarn fork:test
-```
-
-Runs tests that should be run in mainnet's fork.
-<br/>
-
-### **Lint**
-
-```bash
-yarn lint
-```
-
-Runs solhint.
-<br/>
-
-### **Prettier (lint fix)**
-
-```bash
-yarn lint:fix
-```
-
-Runs prettier
-<br/>
-
-### **Release**
-
-```bash
-yarn release
-```
-
-Runs standard changelog, changes package.json version and modifies CHANGELOG.md accordingly.
-<br/>
-
-### **Test**
-
-```bash
-yarn test
-```
-
-Runs all solidity tests.
-<br/>
-
-```bash
-yarn test:unit
-```
-
-Runs all solidity tests in folder [unit](./test/unit)
-<br/>
-
-```bash
-yarn test:e2e
-```
-
-Runs all solidity tests in folder [e2e](./test/e2e)
-<br/>
-
-### **Gas report**
-
-```bash
-yarn test:gas
-```
-
-Runs all tests and report gas usage.
+- `removeBenefit(token, beneficiary)`
+- `removeBeneficiary(beneficiary)`
