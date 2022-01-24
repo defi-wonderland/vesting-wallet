@@ -204,7 +204,7 @@ contract VestingWallet is IVestingWallet, Governable {
       _deleteBenefit(_token, _beneficiary);
     }
 
-    SafeERC20.safeTransfer(IERC20(_token), _beneficiary, _releasable);
+    IERC20(_token).safeTransfer(_beneficiary, _releasable);
 
     emit BenefitReleased(_token, _beneficiary, _releasable);
   }
