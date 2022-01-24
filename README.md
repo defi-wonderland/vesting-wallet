@@ -27,9 +27,10 @@ Beneficiaries, at any given point, can claim their rewards using any of the foll
 
 - `release(token, beneficiary)`
 - `release(tokens[], beneficiary)`
-  // TODO:
 - `release(token)` (uses `msg.sender` as beneficiary)
 - `release(tokens[])` (uses `msg.sender` as beneficiary)
+- `releaseAll()` (uses `msg.sender` as beneficiary)
+- `releaseAll(beneficiary)`
 
 The contract will calculate, at the given timestamp, the amount of releasable tokens and transfer them to the rightful beneficiary. This functions have no access control, allowing anyone to use their gas for the release of the tokens.
 
