@@ -1,3 +1,5 @@
+> ⚠️ This code has not been audited, use at your own risk
+
 # Vesting Contract
 
 This contract handles the vesting of ERC20 tokens for multiple beneficiaries. Custody of multiple tokens can be given to this contract, which will release the token to the beneficiaries following a given vesting schedule.
