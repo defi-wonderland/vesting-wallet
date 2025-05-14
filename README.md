@@ -2,6 +2,14 @@
 
 # Vesting Contract
 
+> ⚠️ **DEPRECATED – DO NOT USE**
+>
+> This repository is no longer maintained and is **deprecated**.
+>
+> It may contain **outdated, insecure, or vulnerable code** and should **not** be used in production or as a dependency in any project.
+>
+> The repository is retained solely for historical reference. No support, updates, or security patches will be provided.
+
 This contract handles the vesting of ERC20 tokens for multiple beneficiaries. Custody of multiple tokens can be given to this contract, which will release the token to the beneficiaries following a given vesting schedule.
 
 Tokens should be added to the contract through `addBenefit` function, any token externally transferred will be retrievable with the dust collector functionality.
